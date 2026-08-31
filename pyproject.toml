@@ -11,7 +11,12 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["matplotlib>=3.11.1", "pytest>=9.1.1", "typer>=0.27.2"]
+dev = [
+    "matplotlib>=3.11.1",
+    "pytest>=9.1.1",
+    "tqdm>=4.70.0",
+    "typer>=0.27.2",
+]
 
 [build-system]
 requires = ["uv_build>=0.12.7,<0.13"]

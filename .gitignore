@@ -1,3 +1,8 @@
 # Python bytecode files
 *.py[co]
 __pycache__/
+
+# Directory for serialized results objects
+/results
+# Directory for plots
+/plots

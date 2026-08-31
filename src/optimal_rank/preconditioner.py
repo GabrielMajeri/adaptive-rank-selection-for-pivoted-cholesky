@@ -10,7 +10,15 @@ from .interface import MatrixInterface
 from .types import Matrix, Vector
 
 
-class IterativePreconditioner(ABC):
+class Preconditioner(ABC):
+    "Abstract base class for preconditioners."
+
+    @abstractmethod
+    def apply(self, rhs: Vector) -> Vector:
+        "Applies the preconditioner to the given vector and return the result."
+
+
+class IterativePreconditioner(Preconditioner, ABC):
     """Abstract base class for preconditioning methods which can be
     iteratively refined/improved over time.
 
@@ -18,13 +26,6 @@ class IterativePreconditioner(ABC):
     as it is updated/improved (i.e. over time, it reduces the problem's conditioning number
     even more than it initially did).
     """
-
-    @abstractmethod
-    def apply(self, rhs: Vector) -> Vector:
-        """Applies the current iteration of the preconditioner to the given vector.
-
-        Returns the vector obtained by applying the preconditioner.
-        """
 
     @abstractmethod
     def update_inner(self) -> None:
@@ -77,6 +78,53 @@ class IterativePreconditioner(ABC):
     @property
     @abstractmethod
     def max_rank(self) -> int: ...
+
+
+class StaticPreconditioner(IterativePreconditioner, ABC):
+    "Adapter class for preconditioners which cannot be iteratively constructed/improved."
+
+    @override
+    def update_inner(self) -> None:
+        return
+
+    @override
+    def update_outer(self) -> None:
+        return
+
+    @override
+    def compute_full(self) -> None:
+        return
+
+    @property
+    @override
+    def current_inner_rank(self) -> int:
+        return 0
+
+    @property
+    @override
+    def current_outer_rank(self) -> int:
+        return 0
+
+    @property
+    @override
+    def max_rank(self) -> int:
+        return 0
+
+
+@final
+class IdentityPreconditioner(StaticPreconditioner):
+    """Dummy identity preconditioner, which doesn't actually do anything.
+
+    The effect of applying it on a vector is the same as applying the identity operator,
+    and the update methods don't do anything.
+
+    This can be used as a baseline to compare against other preconditioners,
+    or in cases where no preconditioning is needed.
+    """
+
+    @override
+    def apply(self, rhs: Vector) -> Vector:
+        return rhs
 
 
 class PivotedCholeskyPreconditioner(IterativePreconditioner, ABC):
@@ -224,7 +272,6 @@ class PivotedCholeskyPreconditioner(IterativePreconditioner, ABC):
         buffer = self._capacitance_cholesky[:current_rank, :current_rank]
 
         # Compute `U U^T + mu*I`
-        # TODO: find a way to also do this in-place, as an option
         capacitance = np.matmul(U, U.mT, out=buffer)
         if self._regularization_factor != 0:
             _add_regularization_inplace(capacitance, self._regularization_factor)
@@ -251,6 +298,13 @@ class PivotedCholeskyPreconditioner(IterativePreconditioner, ABC):
     @override
     def max_rank(self) -> int:
         return self._max_rank
+
+    @property
+    def latest_pivot(self) -> float:
+        if len(self._pivots) == 0:
+            return self._matrix_diagonal.max()
+
+        return self._pivots[-1]
 
 
 @numba.njit
