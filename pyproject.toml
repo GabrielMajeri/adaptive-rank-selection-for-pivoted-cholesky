@@ -2,4 +2,20 @@
 name = "optimal-rank-for-pivoted-cholesky-decomposition"
 version = "0.1.0"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "numba>=0.67.0",
+    "numpy>=2.5.2",
+    "pykeops>=2.3",
+    "scipy>=1.18.1",
+    "scipy-stubs>=1.18.1.0",
+]
+
+[dependency-groups]
+dev = ["matplotlib>=3.11.1", "pytest>=9.1.1", "typer>=0.27.2"]
+
+[build-system]
+requires = ["uv_build>=0.12.7,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "optimal_rank"
