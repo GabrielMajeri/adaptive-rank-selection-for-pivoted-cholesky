@@ -32,12 +32,25 @@ def main(
     dimension: Annotated[
         int, typer.Option(help="Dimension of each point's feature vector")
     ] = 16,
+    max_rank: Annotated[
+        int | None,
+        typer.Option(help="Rank up to which to exhaustively check solve time"),
+    ] = None,
+    rank_step: Annotated[
+        int,
+        typer.Option(
+            help="Number of ranks by which to increase preconditioner's rank before again determining solver's full elapsed time"
+        ),
+    ] = 50,
     seed: Annotated[int, typer.Option(help="Seed for random number generator")] = 42,
     plot_only: Annotated[
         bool,
         typer.Option(
             help="Skip performing experiment and just plot results from a previous run"
         ),
+    ] = False,
+    use_tqdm: Annotated[
+        bool, typer.Option(help="Enable tqdm for interactive progress bars")
     ] = False,
 ) -> None:
     """Tries to find the optimal rank for solving a dense linear system
@@ -74,12 +87,18 @@ def main(
 
         N = num_points
 
-        ranks = list(range(0, N // 2, 50))
+        # TODO: why do we need this warm-up?
+        warm_up_code(N)
+
+        if max_rank is None:
+            max_rank = N // 2
+
+        ranks = list(range(0, max_rank, rank_step))
         elapsed_times: list[float] = []
         convergences: list[bool] = []
         pivots: list[float] = []
 
-        tolerance = 1e-3
+        tolerance = 1e-5
         max_iterations = 1000
         preconditioner_regularization_factor = 1e-3
 
@@ -90,9 +109,12 @@ def main(
                 matrix, rank, preconditioner_regularization_factor, rank
             )
 
-        for target_rank in tqdm(
-            ranks, desc="Solving system using various preconditioner ranks"
-        ):
+        if use_tqdm:
+            ranks_iterator = tqdm(ranks)
+        else:
+            ranks_iterator = iter(ranks)
+
+        for target_rank in ranks_iterator:
             elapsed_time, converged, last_pivot = (
                 solve_system_using_pivoted_cholesky_preconditioner(
                     K_adapted,
@@ -121,9 +143,38 @@ def main(
     plots_directory = Path("plots/exhaustive_search")
     plots_directory.mkdir(parents=True, exist_ok=True)
 
-    figure = plt.figure(dpi=200)
+    figure = plt.figure(figsize=(10, 5), dpi=200)
+    figure.suptitle(
+        "Solving kernel ridge regression problem\n"
+        "using CG with pivoted Cholesky preconditioner"
+    )
     plot_results(figure, results)
+    figure.tight_layout()
     figure.savefig(plots_directory / f"N_{num_points}.pdf")
+
+
+def warm_up_code(dimension: int) -> None:
+    """Warms-up the preconditioned conjugate gradient code by
+    constructing a small preconditioner and then performing one step of the PCG method.
+    """
+
+    A = np.ones((dimension, dimension), dtype=np.float64)
+    A_adapted = NumPyArrayAdapter(A)
+
+    b = np.ones(dimension, dtype=np.float64)
+
+    # Warm-up preconditioner computation code
+    preconditioner = GreedilyPivotedCholeskyPreconditioner(A_adapted, 1, 1e-3)
+    preconditioner.compute_full()
+
+    tolerance = 1e-5
+
+    # Warm-up solver code
+    solver = PreconditionedConjugateGradientSolver(
+        A_adapted, b, preconditioner, tolerance
+    )
+
+    solver.step()
 
 
 @dataclass
@@ -169,32 +220,40 @@ def solve_system_using_pivoted_cholesky_preconditioner(
 
 
 def plot_results(figure: Figure, results: ExhaustiveSearchResults) -> None:
-    ax = figure.add_subplot()
+    ranks = np.asarray(results.ranks)
+    elapsed_times = np.asarray(results.elapsed_times)
+    pivots = np.asarray(results.pivots)
+    convergences = np.asarray(results.convergences)
 
-    lines1 = ax.plot(results.ranks, results.elapsed_times, label="Elapsed time")
+    not_converged = np.where(~np.asarray(convergences, dtype=np.bool))[0]
+    elapsed_times[not_converged] = elapsed_times.max()
 
-    twin_ax = ax.twinx()
-    lines2 = twin_ax.plot(
-        results.ranks, results.pivots, color="orange", label="Pivot value"
-    )
-    twin_ax.set_ylabel("Pivot norm")
+    ax = figure.add_subplot(1, 2, 1)
 
-    not_converged = np.where(~np.asarray(results.convergences, dtype=np.bool))[0]
+    ax.plot(ranks, elapsed_times, label="Elapsed time")
+
     if len(not_converged) > 0:
         ax.plot(
-            results.ranks[not_converged],
-            results.elapsed_times[not_converged],
-            "*",
+            ranks[not_converged],
+            elapsed_times[not_converged],
             color="red",
+            label="Not converged",
         )
 
     ax.set_xlabel("Rank")
     ax.set_ylabel("Elapsed time")
 
-    lines = lines1 + lines2
-    labels = [str(line.get_label()) for line in lines]
-    ax.legend(lines, labels)
+    ax.legend()
+    ax.grid()
 
+    ax = figure.add_subplot(1, 2, 2)
+
+    ax.plot(ranks, pivots, color="orange", label="Pivot value")
+
+    ax.set_xlabel("Rank")
+    ax.set_ylabel("Pivot norm")
+
+    ax.legend()
     ax.grid()
 
 
