@@ -12,6 +12,11 @@ from matplotlib.figure import Figure
 from rich import print
 from tqdm import tqdm
 
+from optimal_rank.datasets.libsvm import (
+    LibSVMDatasetKind,
+    load_and_process_libsvm_dataset,
+)
+from optimal_rank.datasets.sgdml import load_and_process_sgdml_dataset
 from optimal_rank.interface import MatrixInterface, NumPyArrayAdapter
 from optimal_rank.kernels import rbf_kernel
 from optimal_rank.preconditioner import (
@@ -23,15 +28,26 @@ from optimal_rank.types import Vector
 
 
 def main(
+    dataset: Annotated[
+        str, typer.Option(help="Identifier of dataset to use.")
+    ] = "random-multivariate-normal",
     num_points: Annotated[
         int,
         typer.Option(
-            help="Number of points of the dataset. Equal to the dimension of the kernel matrix."
+            "--num-points",
+            "-N",
+            help="Number of points of the dataset. Equal to the dimension of the kernel matrix.",
         ),
     ] = 1000,
     dimension: Annotated[
-        int, typer.Option(help="Dimension of each point's feature vector")
+        int | None,
+        typer.Option(
+            "--dimension",
+            "-D",
+            help="Dimension of each point's feature vector. Only relevant for synthetic datasets.",
+        ),
     ] = 16,
+    seed: Annotated[int, typer.Option(help="Seed for random number generator")] = 42,
     max_rank: Annotated[
         int | None,
         typer.Option(help="Rank up to which to exhaustively check solve time"),
@@ -42,15 +58,32 @@ def main(
             help="Number of ranks by which to increase preconditioner's rank before again determining solver's full elapsed time"
         ),
     ] = 50,
-    seed: Annotated[int, typer.Option(help="Seed for random number generator")] = 42,
+    tolerance: Annotated[
+        float,
+        typer.Option(
+            help="Tolerance for the conjugate gradient solver. If the residual error norm is below this value, the solver is considered to have converged."
+        ),
+    ] = 1e-5,
+    max_iterations: Annotated[
+        int,
+        typer.Option(
+            help="Maximum number of iterations for the conjugate gradient solver. If exceeded, the solver will be considered to have not converged."
+        ),
+    ] = 1000,
+    use_tqdm: Annotated[
+        bool, typer.Option(help="Enable tqdm for interactive progress bars")
+    ] = True,
     plot_only: Annotated[
         bool,
         typer.Option(
             help="Skip performing experiment and just plot results from a previous run"
         ),
     ] = False,
-    use_tqdm: Annotated[
-        bool, typer.Option(help="Enable tqdm for interactive progress bars")
+    hide_title: Annotated[
+        bool,
+        typer.Option(
+            help="Hide title in plot. Useful for including figures in LaTeX documents."
+        ),
     ] = False,
 ) -> None:
     """Tries to find the optimal rank for solving a dense linear system
@@ -59,7 +92,7 @@ def main(
     by repeatedly solving the system with preconditioners of various fixed ranks.
     """
     if plot_only:
-        results_directory = Path("results/exhaustive_search")
+        results_directory = Path("results/exhaustive_search") / dataset
         results_path = results_directory / f"N_{num_points}.pkl"
         if not results_path.exists():
             print(f"[red]Error: results file '{results_path}' not found[/red]")
@@ -75,7 +108,37 @@ def main(
     else:
         generator = np.random.default_rng(seed)
 
-        points = generator.normal(size=(num_points, dimension))
+        if dataset == "random-multivariate-normal":
+            if dimension is None:
+                raise ValueError(
+                    "Dimension must be specified for `random-multivariate-normal` dataset"
+                )
+
+            points = generator.normal(size=(num_points, dimension))
+
+        elif dataset.startswith("libsvm"):
+            dataset_identifier = dataset.split("-", 1)[1]
+            labeled_dataset = load_and_process_libsvm_dataset(
+                LibSVMDatasetKind.REGRESSION,
+                dataset_identifier,
+                max_vectors=num_points,
+                train_size=1.0,
+                test_size=0.0,
+            )
+            points = labeled_dataset.X_train
+
+        elif dataset.startswith("sgdml"):
+            dataset_identifier = dataset.split("-", 1)[1]
+            labeled_dataset = load_and_process_sgdml_dataset(
+                dataset_identifier,
+                max_vectors=num_points,
+                train_size=1.0,
+                test_size=0.0,
+            )
+            points = labeled_dataset.X_train
+
+        else:
+            raise ValueError(f"Unknown dataset: {dataset}")
 
         regularization = 1e-5
 
@@ -98,8 +161,6 @@ def main(
         convergences: list[bool] = []
         pivots: list[float] = []
 
-        tolerance = 1e-5
-        max_iterations = 1000
         preconditioner_regularization_factor = 1e-3
 
         def construct_greedily_pivoted_cholesky_preconditioner(
@@ -140,14 +201,17 @@ def main(
             pickle.dump(results, file)
 
     print("Plotting results...")
-    plots_directory = Path("plots/exhaustive_search")
+    plots_directory = Path("plots/exhaustive_search") / dataset
     plots_directory.mkdir(parents=True, exist_ok=True)
 
-    figure = plt.figure(figsize=(10, 5), dpi=200)
-    figure.suptitle(
-        "Solving kernel ridge regression problem\n"
-        "using CG with pivoted Cholesky preconditioner"
-    )
+    figure = plt.figure(dpi=200)
+
+    if not hide_title:
+        figure.suptitle(
+            "Solving kernel ridge regression problem\n"
+            "using CG with pivoted Cholesky preconditioner"
+        )
+
     plot_results(figure, results)
     figure.tight_layout()
     figure.savefig(plots_directory / f"N_{num_points}.pdf")
@@ -222,13 +286,13 @@ def solve_system_using_pivoted_cholesky_preconditioner(
 def plot_results(figure: Figure, results: ExhaustiveSearchResults) -> None:
     ranks = np.asarray(results.ranks)
     elapsed_times = np.asarray(results.elapsed_times)
-    pivots = np.asarray(results.pivots)
+    # pivots = np.asarray(results.pivots)
     convergences = np.asarray(results.convergences)
 
     not_converged = np.where(~np.asarray(convergences, dtype=np.bool))[0]
     elapsed_times[not_converged] = elapsed_times.max()
 
-    ax = figure.add_subplot(1, 2, 1)
+    ax = figure.add_subplot(1, 1, 1)
 
     ax.plot(ranks, elapsed_times, label="Elapsed time")
 
@@ -246,15 +310,15 @@ def plot_results(figure: Figure, results: ExhaustiveSearchResults) -> None:
     ax.legend()
     ax.grid()
 
-    ax = figure.add_subplot(1, 2, 2)
+    # ax = figure.add_subplot(1, 2, 2)
 
-    ax.plot(ranks, pivots, color="orange", label="Pivot value")
+    # ax.plot(ranks, pivots, color="orange", label="Pivot value")
 
-    ax.set_xlabel("Rank")
-    ax.set_ylabel("Pivot norm")
+    # ax.set_xlabel("Rank")
+    # ax.set_ylabel("Pivot norm")
 
-    ax.legend()
-    ax.grid()
+    # ax.legend()
+    # ax.grid()
 
 
 if __name__ == "__main__":

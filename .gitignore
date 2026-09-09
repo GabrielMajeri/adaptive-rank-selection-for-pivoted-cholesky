@@ -2,6 +2,10 @@
 *.py[co]
 __pycache__/
 
+# Cache directory for processed datasets
+/cache
+# Raw data files
+/data
 # Directory for serialized results objects
 /results
 # Directory for plots
