@@ -3,15 +3,15 @@ from conftest import (  # pyright: ignore[reportImplicitRelativeImport]
     generate_random_spd_matrix,
 )
 
-from optimal_rank.interface import NumPyArrayAdapter
-from optimal_rank.preconditioner import (
+from adaptive_rank.interface import NumPyArrayAdapter
+from adaptive_rank.preconditioner import (
     GreedilyPivotedCholeskyPreconditioner,
     IdentityPreconditioner,
 )
-from optimal_rank.solver import (
+from adaptive_rank.solver import (
     PreconditionedConjugateGradientSolver,
 )
-from optimal_rank.types import Matrix, Vector
+from adaptive_rank.types import Matrix, Vector
 
 
 def generate_random_spd_system(

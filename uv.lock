@@ -3,6 +3,49 @@ revision = 3
 requires-python = ">=3.14"
 
 [[package]]
+name = "adaptive-rank-selection-for-pivoted-cholesky-decomposition"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "numba" },
+    { name = "numpy" },
+    { name = "pykeops" },
+    { name = "scipy" },
+    { name = "scipy-stubs" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "httpx" },
+    { name = "matplotlib" },
+    { name = "pytest" },
+    { name = "scikit-learn" },
+    { name = "scikit-learn-stubs" },
+    { name = "tqdm" },
+    { name = "typer" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numba", specifier = ">=0.67.0" },
+    { name = "numpy", specifier = ">=2.5.2" },
+    { name = "pykeops", specifier = ">=2.3" },
+    { name = "scipy", specifier = ">=1.18.1" },
+    { name = "scipy-stubs", specifier = ">=1.18.1.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "matplotlib", specifier = ">=3.11.1" },
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "scikit-learn", specifier = ">=1.9.0" },
+    { name = "scikit-learn-stubs", specifier = ">=0.0.3" },
+    { name = "tqdm", specifier = ">=4.70.0" },
+    { name = "typer", specifier = ">=0.27.2" },
+]
+
+[[package]]
 name = "annotated-doc"
 version = "0.0.5"
 source = { registry = "https://pypi.org/simple" }
@@ -443,49 +486,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/08/db/5cd1d99caea4bf39fd477686ded4b9b70dff3c7673b5d84ef2d96a4f5aab/numpy_typing_compat-20260602.2.5.tar.gz", hash = "sha256:1885a678e9a24564839ed5d1711c0031735fb7de7f0b5ed88d550e5d45a8d4f9", size = 4593, upload-time = "2026-06-02T15:52:39.331Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b1/a4/9376b38b7387a0296b1f626b966e5503578625c9673777db1b45bf70acb0/numpy_typing_compat-20260602.2.5-py3-none-any.whl", hash = "sha256:21ba7757c8924d359a9ed3ab2163c282a70983ae64498fdba6d1892a6641c8b1", size = 5881, upload-time = "2026-06-02T15:52:34.167Z" },
-]
-
-[[package]]
-name = "optimal-rank-for-pivoted-cholesky-decomposition"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "numba" },
-    { name = "numpy" },
-    { name = "pykeops" },
-    { name = "scipy" },
-    { name = "scipy-stubs" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "httpx" },
-    { name = "matplotlib" },
-    { name = "pytest" },
-    { name = "scikit-learn" },
-    { name = "scikit-learn-stubs" },
-    { name = "tqdm" },
-    { name = "typer" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "numba", specifier = ">=0.67.0" },
-    { name = "numpy", specifier = ">=2.5.2" },
-    { name = "pykeops", specifier = ">=2.3" },
-    { name = "scipy", specifier = ">=1.18.1" },
-    { name = "scipy-stubs", specifier = ">=1.18.1.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "matplotlib", specifier = ">=3.11.1" },
-    { name = "pytest", specifier = ">=9.1.1" },
-    { name = "scikit-learn", specifier = ">=1.9.0" },
-    { name = "scikit-learn-stubs", specifier = ">=0.0.3" },
-    { name = "tqdm", specifier = ">=4.70.0" },
-    { name = "typer", specifier = ">=0.27.2" },
 ]
 
 [[package]]

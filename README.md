@@ -1,4 +1,4 @@
-# Optimal rank for solving linear systems using the pivoted Cholesky decomposition
+# Adaptive rank selection for solving linear systems using the pivoted Cholesky decomposition
 
 ## Description
 

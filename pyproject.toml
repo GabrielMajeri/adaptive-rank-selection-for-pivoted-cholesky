@@ -1,5 +1,5 @@
 [project]
-name = "optimal-rank-for-pivoted-cholesky-decomposition"
+name = "adaptive-rank-selection-for-pivoted-cholesky-decomposition"
 version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = [
@@ -26,4 +26,4 @@ requires = ["uv_build>=0.12.7,<0.13"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = "optimal_rank"
+module-name = "adaptive_rank"

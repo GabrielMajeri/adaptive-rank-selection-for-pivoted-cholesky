@@ -12,19 +12,19 @@ from matplotlib.figure import Figure
 from rich import print
 from tqdm import tqdm
 
-from optimal_rank.datasets.libsvm import (
+from adaptive_rank.datasets.libsvm import (
     LibSVMDatasetKind,
     load_and_process_libsvm_dataset,
 )
-from optimal_rank.datasets.sgdml import load_and_process_sgdml_dataset
-from optimal_rank.interface import MatrixInterface, NumPyArrayAdapter
-from optimal_rank.kernels import rbf_kernel
-from optimal_rank.preconditioner import (
+from adaptive_rank.datasets.sgdml import load_and_process_sgdml_dataset
+from adaptive_rank.interface import MatrixInterface, NumPyArrayAdapter
+from adaptive_rank.kernels import rbf_kernel
+from adaptive_rank.preconditioner import (
     GreedilyPivotedCholeskyPreconditioner,
     PivotedCholeskyPreconditioner,
 )
-from optimal_rank.solver import PreconditionedConjugateGradientSolver
-from optimal_rank.types import Vector
+from adaptive_rank.solver import PreconditionedConjugateGradientSolver
+from adaptive_rank.types import Vector
 
 
 def main(

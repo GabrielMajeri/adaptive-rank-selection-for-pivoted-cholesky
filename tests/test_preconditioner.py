@@ -4,8 +4,8 @@ from conftest import (  # pyright: ignore[reportImplicitRelativeImport]
     generate_random_spd_matrix,
 )
 
-from optimal_rank.interface import NumPyArrayAdapter
-from optimal_rank.preconditioner import (
+from adaptive_rank.interface import NumPyArrayAdapter
+from adaptive_rank.preconditioner import (
     GreedilyPivotedCholeskyPreconditioner,
     UniformlyRandomPivotedCholeskyPreconditioner,
 )

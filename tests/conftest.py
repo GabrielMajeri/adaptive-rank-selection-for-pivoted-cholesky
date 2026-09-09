@@ -1,6 +1,6 @@
 import numpy as np
 
-from optimal_rank.types import Matrix
+from adaptive_rank.types import Matrix
 
 
 def generate_random_spd_matrix(
