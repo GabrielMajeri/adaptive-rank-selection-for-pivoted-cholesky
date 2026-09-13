@@ -61,6 +61,7 @@ def main(
 
     points = labeled_dataset.X_train
     b = labeled_dataset.y_train.squeeze()
+    dimension = points.shape[1]
 
     regularization = 1e-5
 
@@ -161,10 +162,10 @@ def main(
     results_directory = Path("results/adaptive_rank_selection") / dataset
     results_directory.mkdir(parents=True, exist_ok=True)
 
-    results_path = results_directory / f"N_{num_points}.json"
+    results_path = results_directory / f"N_{num_points}_d_{dimension}.json"
 
     with open(results_path, "w") as file:
-        file.write(results.model_dump_json())
+        file.write(results.model_dump_json(indent=2))
 
 
 if __name__ == "__main__":

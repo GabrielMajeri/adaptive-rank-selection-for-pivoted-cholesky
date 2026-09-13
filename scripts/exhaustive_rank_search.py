@@ -87,6 +87,8 @@ def main(
     the pivoted Cholesky decomposition as a preconditioner)
     by repeatedly solving the system with preconditioners of various fixed ranks.
     """
+    max_rank = max_rank if max_rank is not None else num_points // 2
+
     results_directory = Path("results/exhaustive_search") / dataset
     results_path = (
         results_directory
@@ -120,9 +122,6 @@ def main(
         N = num_points
 
         warm_up_code(N)
-
-        if max_rank is None:
-            max_rank = N // 2
 
         ranks = list(range(0, max_rank, rank_step))
         elapsed_times: list[float] = []

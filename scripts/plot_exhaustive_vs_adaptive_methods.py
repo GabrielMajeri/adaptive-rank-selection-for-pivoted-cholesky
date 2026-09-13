@@ -1,4 +1,3 @@
-import pickle
 from bisect import bisect
 from pathlib import Path
 from typing import Annotated
@@ -6,6 +5,11 @@ from typing import Annotated
 import matplotlib.pyplot as plt
 import numpy as np
 import typer
+
+from adaptive_rank.experiments.common import (
+    AdaptiveRankSelectionResults,
+    ExhaustiveSearchResults,
+)
 
 
 def main(
@@ -20,22 +24,46 @@ def main(
             help="Number of points of the dataset. Equal to the dimension of the kernel matrix.",
         ),
     ] = 1000,
+    dimension: Annotated[
+        int | None,
+        typer.Option(
+            "--dimension",
+            "-D",
+            help="Dimension of each point's feature vector. Only relevant for synthetic datasets.",
+        ),
+    ] = 16,
+    max_rank: Annotated[
+        int | None,
+        typer.Option(help="Rank up to which solve time was exhaustively checked."),
+    ] = None,
+    rank_step: Annotated[
+        int,
+        typer.Option(
+            help="Number of ranks by which the preconditioner's rank was increased in the exhaustive search experiment."
+        ),
+    ] = 50,
 ) -> None:
     """Compares the results of the exhaustive search and adaptive rank selection experiments
     for a given dataset and number of points. Makes plots of the elapsed time vs. rank for both methods,
     and marks the best rank found by the adaptive method.
     """
+    max_rank = max_rank if max_rank is not None else num_points // 2
+
     exhaustive_search_results_path = Path(
-        f"results/exhaustive_search/{dataset}/N_{num_points}.pkl"
+        f"results/exhaustive_search/{dataset}/N_{num_points}_d_{dimension}_max_k_{max_rank}_step_{rank_step}.json"
     )
-    with open(exhaustive_search_results_path, "rb") as file:
-        exhaustive_search_results = pickle.load(file)
+    with open(exhaustive_search_results_path, "r") as file:
+        exhaustive_search_results = ExhaustiveSearchResults.model_validate_json(
+            file.read()
+        )
 
     adaptive_rank_selection_results_path = Path(
-        f"results/adaptive_rank_selection/{dataset}/N_{num_points}.pkl"
+        f"results/adaptive_rank_selection/{dataset}/N_{num_points}_d_{dimension}.json"
     )
-    with open(adaptive_rank_selection_results_path, "rb") as file:
-        adaptive_rank_selection_results = pickle.load(file)
+    with open(adaptive_rank_selection_results_path, "r") as file:
+        adaptive_rank_selection_results = (
+            AdaptiveRankSelectionResults.model_validate_json(file.read())
+        )
 
     elapsed_times = np.asarray(exhaustive_search_results.elapsed_times)
 
