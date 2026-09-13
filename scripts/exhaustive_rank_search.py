@@ -1,6 +1,4 @@
-import pickle
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
 from typing import Annotated
@@ -12,11 +10,9 @@ from matplotlib.figure import Figure
 from rich import print
 from tqdm import tqdm
 
-from adaptive_rank.datasets.libsvm import (
-    LibSVMDatasetKind,
-    load_and_process_libsvm_dataset,
-)
-from adaptive_rank.datasets.sgdml import load_and_process_sgdml_dataset
+from adaptive_rank.datasets.utils import load_dataset
+from adaptive_rank.experiments import warm_up_code
+from adaptive_rank.experiments.common import ExhaustiveSearchResults
 from adaptive_rank.interface import MatrixInterface, NumPyArrayAdapter
 from adaptive_rank.kernels import rbf_kernel
 from adaptive_rank.preconditioner import (
@@ -91,54 +87,28 @@ def main(
     the pivoted Cholesky decomposition as a preconditioner)
     by repeatedly solving the system with preconditioners of various fixed ranks.
     """
+    results_directory = Path("results/exhaustive_search") / dataset
+    results_path = (
+        results_directory
+        / f"N_{num_points}_d_{dimension}_max_k_{max_rank}_step_{rank_step}.json"
+    )
+
     if plot_only:
-        results_directory = Path("results/exhaustive_search") / dataset
-        results_path = results_directory / f"N_{num_points}.pkl"
         if not results_path.exists():
             print(f"[red]Error: results file '{results_path}' not found[/red]")
             raise typer.Exit(1)
 
-        with open(results_path, "rb") as file:
-            results = pickle.load(file)  # pyright: ignore[reportAny]
-
-        if not isinstance(results, ExhaustiveSearchResults):
-            print("[red]Error: deserialized results object is of wrong type[/red]")
-            raise typer.Exit(1)
+        with open(results_path, "r") as file:
+            results = ExhaustiveSearchResults.model_validate_json(file.read())
 
     else:
-        generator = np.random.default_rng(seed)
+        print(f"Loading dataset '{dataset}'...")
+        labeled_dataset = load_dataset(dataset, num_points, 1.0, 0.0, dimension, seed)
 
-        if dataset == "random-multivariate-normal":
-            if dimension is None:
-                raise ValueError(
-                    "Dimension must be specified for `random-multivariate-normal` dataset"
-                )
-
-            points = generator.normal(size=(num_points, dimension))
-
-        elif dataset.startswith("libsvm"):
-            dataset_identifier = dataset.split("-", 1)[1]
-            labeled_dataset = load_and_process_libsvm_dataset(
-                LibSVMDatasetKind.REGRESSION,
-                dataset_identifier,
-                max_vectors=num_points,
-                train_size=1.0,
-                test_size=0.0,
-            )
-            points = labeled_dataset.X_train
-
-        elif dataset.startswith("sgdml"):
-            dataset_identifier = dataset.split("-", 1)[1]
-            labeled_dataset = load_and_process_sgdml_dataset(
-                dataset_identifier,
-                max_vectors=num_points,
-                train_size=1.0,
-                test_size=0.0,
-            )
-            points = labeled_dataset.X_train
-
-        else:
-            raise ValueError(f"Unknown dataset: {dataset}")
+        points = labeled_dataset.X_train
+        # Some datasets have a fixed dimension, so we ignore the parameter and use the dimension of the dataset instead
+        dimension = points.shape[1]
+        b = labeled_dataset.y_train.squeeze()
 
         regularization = 1e-5
 
@@ -146,11 +116,9 @@ def main(
             num_points, dtype=np.float64
         )
         K_adapted = NumPyArrayAdapter(K)
-        b = generator.normal(size=num_points)
 
         N = num_points
 
-        # TODO: why do we need this warm-up?
         warm_up_code(N)
 
         if max_rank is None:
@@ -190,15 +158,18 @@ def main(
             convergences.append(converged)
             pivots.append(last_pivot)
 
-        results = ExhaustiveSearchResults(ranks, elapsed_times, convergences, pivots)
+        results = ExhaustiveSearchResults(
+            ranks=ranks,
+            elapsed_times=elapsed_times,
+            convergences=convergences,
+            pivots=pivots,
+        )
 
         print("Saving results to disk...")
-        results_directory = Path("results/exhaustive_search")
         results_directory.mkdir(parents=True, exist_ok=True)
 
-        results_path = results_directory / f"N_{num_points}.pkl"
-        with open(results_path, "wb") as file:
-            pickle.dump(results, file)
+        with open(results_path, "w") as file:
+            file.write(results.model_dump_json(indent=2))
 
     print("Plotting results...")
     plots_directory = Path("plots/exhaustive_search") / dataset
@@ -214,39 +185,10 @@ def main(
 
     plot_results(figure, results)
     figure.tight_layout()
-    figure.savefig(plots_directory / f"N_{num_points}.pdf")
-
-
-def warm_up_code(dimension: int) -> None:
-    """Warms-up the preconditioned conjugate gradient code by
-    constructing a small preconditioner and then performing one step of the PCG method.
-    """
-
-    A = np.ones((dimension, dimension), dtype=np.float64)
-    A_adapted = NumPyArrayAdapter(A)
-
-    b = np.ones(dimension, dtype=np.float64)
-
-    # Warm-up preconditioner computation code
-    preconditioner = GreedilyPivotedCholeskyPreconditioner(A_adapted, 1, 1e-3)
-    preconditioner.compute_full()
-
-    tolerance = 1e-5
-
-    # Warm-up solver code
-    solver = PreconditionedConjugateGradientSolver(
-        A_adapted, b, preconditioner, tolerance
+    figure.savefig(
+        plots_directory
+        / f"N_{num_points}_d_{dimension}_max_k_{max_rank}_step_{rank_step}.pdf"
     )
-
-    solver.step()
-
-
-@dataclass
-class ExhaustiveSearchResults:
-    ranks: list[int]
-    elapsed_times: list[float]
-    convergences: list[bool]
-    pivots: list[float]
 
 
 def solve_system_using_pivoted_cholesky_preconditioner(
