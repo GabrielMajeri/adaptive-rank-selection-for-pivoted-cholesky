@@ -24,14 +24,6 @@ def main(
             help="Number of points of the dataset. Equal to the dimension of the kernel matrix.",
         ),
     ] = 1000,
-    dimension: Annotated[
-        int | None,
-        typer.Option(
-            "--dimension",
-            "-D",
-            help="Dimension of each point's feature vector. Only relevant for synthetic datasets.",
-        ),
-    ] = 16,
     max_rank: Annotated[
         int | None,
         typer.Option(help="Rank up to which solve time was exhaustively checked."),
@@ -50,7 +42,7 @@ def main(
     max_rank = max_rank if max_rank is not None else num_points // 2
 
     exhaustive_search_results_path = Path(
-        f"results/exhaustive_search/{dataset}/N_{num_points}_d_{dimension}_max_k_{max_rank}_step_{rank_step}.json"
+        f"results/exhaustive_search/{dataset}/N_{num_points}_max_k_{max_rank}_step_{rank_step}.json"
     )
     with open(exhaustive_search_results_path, "r") as file:
         exhaustive_search_results = ExhaustiveSearchResults.model_validate_json(
@@ -58,7 +50,7 @@ def main(
         )
 
     adaptive_rank_selection_results_path = Path(
-        f"results/adaptive_rank_selection/{dataset}/N_{num_points}_d_{dimension}.json"
+        f"results/adaptive_rank_selection/{dataset}/N_{num_points}.json"
     )
     with open(adaptive_rank_selection_results_path, "r") as file:
         adaptive_rank_selection_results = (

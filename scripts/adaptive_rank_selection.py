@@ -10,8 +10,8 @@ from tqdm import tqdm
 from adaptive_rank.datasets.utils import load_dataset
 from adaptive_rank.experiments import warm_up_code
 from adaptive_rank.experiments.common import AdaptiveRankSelectionResults
-from adaptive_rank.interface import NumPyArrayAdapter
-from adaptive_rank.kernels import rbf_kernel
+from adaptive_rank.interface import LazyTensorKernelAdapter, NumPyArrayAdapter
+from adaptive_rank.kernels import rbf_kernel, rbf_kernel_keops
 from adaptive_rank.preconditioner import GreedilyPivotedCholeskyPreconditioner
 from adaptive_rank.solver import PreconditionedConjugateGradientSolver
 
@@ -49,6 +49,9 @@ def main(
     #         help="Maximum number of iterations for the conjugate gradient solver. If exceeded, the solver will be considered to have not converged."
     #     ),
     # ] = 1000,
+    use_keops: Annotated[
+        bool, typer.Option(help="Use PyKeOps for kernel matrix computation")
+    ] = False,
     use_tqdm: Annotated[
         bool, typer.Option(help="Enable tqdm for interactive progress bars")
     ] = True,
@@ -65,10 +68,21 @@ def main(
 
     regularization = 1e-5
 
-    K = rbf_kernel(points, points) + regularization * np.eye(
-        num_points, dtype=np.float64
-    )
-    K_adapted = NumPyArrayAdapter(K)
+    if use_keops:
+        print("Constructing kernel matrix using PyKeOps...")
+        K = rbf_kernel_keops(points, points)
+        K_adapted = LazyTensorKernelAdapter(
+            K,
+            dtype=points.dtype,
+            regularization_factor=regularization,
+            get_row=lambda row: rbf_kernel(points[row : row + 1], points).squeeze(),
+        )
+    else:
+        print("Constructing kernel matrix using NumPy...")
+        K = rbf_kernel(points, points) + regularization * np.eye(
+            num_points, dtype=np.float64
+        )
+        K_adapted = NumPyArrayAdapter(K)
 
     initial_residual_error = b - K_adapted @ np.ones(len(b))
     initial_residual_error_norm = np.linalg.norm(initial_residual_error)
@@ -88,6 +102,8 @@ def main(
             + (1 / 6) * k**3
             + num_iterations * (6 * N + N**2 + 2 * k * N + 2 * (k**2))
         )
+
+    print("Estimating the best rank for the preconditioner...")
 
     best_rank = -1
     best_estimated_time = np.inf
@@ -162,7 +178,7 @@ def main(
     results_directory = Path("results/adaptive_rank_selection") / dataset
     results_directory.mkdir(parents=True, exist_ok=True)
 
-    results_path = results_directory / f"N_{num_points}_d_{dimension}.json"
+    results_path = results_directory / f"N_{num_points}.json"
 
     with open(results_path, "w") as file:
         file.write(results.model_dump_json(indent=2))

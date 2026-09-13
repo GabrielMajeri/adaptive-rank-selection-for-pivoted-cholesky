@@ -13,8 +13,12 @@ from tqdm import tqdm
 from adaptive_rank.datasets.utils import load_dataset
 from adaptive_rank.experiments import warm_up_code
 from adaptive_rank.experiments.common import ExhaustiveSearchResults
-from adaptive_rank.interface import MatrixInterface, NumPyArrayAdapter
-from adaptive_rank.kernels import rbf_kernel
+from adaptive_rank.interface import (
+    LazyTensorKernelAdapter,
+    MatrixInterface,
+    NumPyArrayAdapter,
+)
+from adaptive_rank.kernels import rbf_kernel, rbf_kernel_keops
 from adaptive_rank.preconditioner import (
     GreedilyPivotedCholeskyPreconditioner,
     PivotedCholeskyPreconditioner,
@@ -66,6 +70,9 @@ def main(
             help="Maximum number of iterations for the conjugate gradient solver. If exceeded, the solver will be considered to have not converged."
         ),
     ] = 1000,
+    use_keops: Annotated[
+        bool, typer.Option(help="Use PyKeOps for kernel matrix computation")
+    ] = False,
     use_tqdm: Annotated[
         bool, typer.Option(help="Enable tqdm for interactive progress bars")
     ] = True,
@@ -91,8 +98,7 @@ def main(
 
     results_directory = Path("results/exhaustive_search") / dataset
     results_path = (
-        results_directory
-        / f"N_{num_points}_d_{dimension}_max_k_{max_rank}_step_{rank_step}.json"
+        results_directory / f"N_{num_points}_max_k_{max_rank}_step_{rank_step}.json"
     )
 
     if plot_only:
@@ -108,16 +114,25 @@ def main(
         labeled_dataset = load_dataset(dataset, num_points, 1.0, 0.0, dimension, seed)
 
         points = labeled_dataset.X_train
-        # Some datasets have a fixed dimension, so we ignore the parameter and use the dimension of the dataset instead
-        dimension = points.shape[1]
         b = labeled_dataset.y_train.squeeze()
 
         regularization = 1e-5
 
-        K = rbf_kernel(points, points) + regularization * np.eye(
-            num_points, dtype=np.float64
-        )
-        K_adapted = NumPyArrayAdapter(K)
+        if use_keops:
+            print("Constructing kernel matrix using PyKeOps...")
+            K = rbf_kernel_keops(points, points)
+            K_adapted = LazyTensorKernelAdapter(
+                K,
+                dtype=points.dtype,
+                regularization_factor=regularization,
+                get_row=lambda row: rbf_kernel(points[row : row + 1], points).squeeze(),
+            )
+        else:
+            print("Constructing kernel matrix using NumPy...")
+            K = rbf_kernel(points, points) + regularization * np.eye(
+                num_points, dtype=np.float64
+            )
+            K_adapted = NumPyArrayAdapter(K)
 
         N = num_points
 
@@ -142,6 +157,9 @@ def main(
         else:
             ranks_iterator = iter(ranks)
 
+        print(
+            f"Solving system using pivoted Cholesky preconditioner with every rank from 0 to {max_rank}"
+        )
         for target_rank in ranks_iterator:
             elapsed_time, converged, last_pivot = (
                 solve_system_using_pivoted_cholesky_preconditioner(
@@ -185,8 +203,7 @@ def main(
     plot_results(figure, results)
     figure.tight_layout()
     figure.savefig(
-        plots_directory
-        / f"N_{num_points}_d_{dimension}_max_k_{max_rank}_step_{rank_step}.pdf"
+        plots_directory / f"N_{num_points}_max_k_{max_rank}_step_{rank_step}.pdf"
     )
 
 
