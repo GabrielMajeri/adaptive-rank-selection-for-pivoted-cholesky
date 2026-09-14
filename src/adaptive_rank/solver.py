@@ -101,6 +101,7 @@ class PreconditionedConjugateGradientSolver(IterativeSolver):
 
     @override
     def step(self) -> None:
+        # Preconditioner application
         # z
         preconditioned_residual = self.preconditioner.apply(self.residual_error)
 
@@ -110,6 +111,8 @@ class PreconditionedConjugateGradientSolver(IterativeSolver):
 
         new_delta = cast(
             np.floating,
+            # O(N)
+            # z_n.T @ r_n
             np.linalg.vecdot(
                 preconditioned_residual,
                 self.residual_error,
@@ -122,22 +125,27 @@ class PreconditionedConjugateGradientSolver(IterativeSolver):
             beta = 0
 
         # p_n = z_n + beta * p_{n-1}
+        # O(N)
         self.descent_direction = preconditioned_residual + beta * self.descent_direction
 
         # w = A @ p_n
+        # O(N^2)
         residual_update_direction = self.coefficients @ self.descent_direction
 
         denominator = cast(
             np.floating,
+            # O(N)
             np.linalg.vecdot(self.descent_direction, residual_update_direction),
         ).item()
         alpha = new_delta / denominator
 
+        # O(N)
         self.residual_error -= alpha * residual_update_direction
 
         self.residual_error_norm = np.linalg.vector_norm(self.residual_error).item()
         self.delta = new_delta
 
+        # O(N)
         self.solution += alpha * self.descent_direction
 
     @override
