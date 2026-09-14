@@ -1,6 +1,7 @@
+from collections.abc import Callable
 from pathlib import Path
 from time import perf_counter
-from typing import Annotated
+from typing import Annotated, Any
 
 import numpy as np
 import typer
@@ -14,6 +15,131 @@ from adaptive_rank.interface import LazyTensorKernelAdapter, NumPyArrayAdapter
 from adaptive_rank.kernels import rbf_kernel, rbf_kernel_keops
 from adaptive_rank.preconditioner import GreedilyPivotedCholeskyPreconditioner
 from adaptive_rank.solver import PreconditionedConjugateGradientSolver
+
+
+class TimeComplexityEstimator:
+    # k^2 N constant
+    c_1: float
+    # k^3 constant
+    c_2: float
+    # k N constant
+    c_3: float
+    # k^2 constant
+    c_4: float
+    # N constant
+    c_5: float
+    # N^2 constant
+    c_6: float
+
+    def __init__(self) -> None:
+        self.c_1 = 0.5
+        self.c_2 = 1 / 6
+        self.c_3 = 1.0
+        self.c_4 = 1.0
+        self.c_5 = 1.0
+        self.c_6 = 1.0
+
+        self._measure_constants()
+
+    def _measure_constants(self) -> None:
+        c_1_coefficients: list[float] = []
+        c_2_coefficients: list[float] = []
+        c_3_coefficients: list[float] = []
+        c_4_coefficients: list[float] = []
+        c_5_coefficients: list[float] = []
+        c_6_coefficients: list[float] = []
+
+        for k, N in ((10, 100), (50, 200), (100, 300), (200, 300), (250, 500)):
+            # k^2 N constant
+            M1 = np.ones((N, k))
+            M2 = np.ones((k, k))
+
+            # Repeat the measurement 5 times to reduce variance
+            durations = self._measure_operation(lambda: M1 @ M2, num_repeats=5)  # noqa: B023
+            coefficient = np.mean(durations) / (k**2 * N)
+            c_1_coefficients.append(coefficient)
+
+            # k^3 constant
+            M1 = np.ones((k, k))
+
+            durations = self._measure_operation(lambda: M1 @ M1, num_repeats=5)  # noqa: B023
+            coefficient = np.mean(durations) / (k**3)
+            c_2_coefficients.append(coefficient)
+
+            # k N constant
+            M1 = np.ones((N, k))
+            M2 = np.ones((k, 1))
+
+            durations = self._measure_operation(lambda: M1 @ M2, num_repeats=5)  # noqa: B023
+            coefficient = np.mean(durations) / (k * N)
+            c_3_coefficients.append(coefficient)
+
+            # k^2 constant
+            M1 = np.ones((k, k))
+            M2 = np.ones((k, 1))
+
+            durations = self._measure_operation(lambda: M1 @ M2, num_repeats=5)  # noqa: B023
+            coefficient = np.mean(durations) / (k**2)
+            c_4_coefficients.append(coefficient)
+
+            # N constant
+            M1 = np.ones((N, 1))
+
+            durations = self._measure_operation(lambda: np.dot(M1, M1.T), num_repeats=5)  # noqa: B023
+            coefficient = np.mean(durations) / N
+            c_5_coefficients.append(coefficient)
+
+            # N^2 constant
+            M1 = np.ones((N, N))
+            M2 = np.ones((N, 1))
+
+            durations = self._measure_operation(lambda: M1 @ M2, num_repeats=5)  # noqa: B023
+            coefficient = np.mean(durations) / N
+            c_5_coefficients.append(coefficient)
+
+            # N^2 constant
+            M1 = np.ones((N, N))
+            M2 = np.ones((N, 1))
+
+            durations = self._measure_operation(lambda: M1 @ M2, num_repeats=5)  # noqa: B023
+            coefficient = np.mean(durations) / (N**2)
+            c_6_coefficients.append(coefficient)
+
+        self.c_1 = np.mean(c_1_coefficients)
+        self.c_2 = np.mean(c_2_coefficients)
+        self.c_3 = np.mean(c_3_coefficients)
+        self.c_4 = np.mean(c_4_coefficients)
+        self.c_5 = np.mean(c_5_coefficients)
+        self.c_6 = np.mean(c_6_coefficients)
+
+    def _measure_operation(
+        self, operation: Callable[[], Any], num_repeats: int = 5
+    ) -> float:
+        "Measure the time taken to perform a given operation, repeated multiple times to reduce variance."
+        durations: list[float] = []
+        for _ in range(num_repeats):
+            start_time = perf_counter()
+            _ = operation()
+            end_time = perf_counter()
+            duration = end_time - start_time
+            durations.append(duration)
+        return np.mean(durations)
+
+    def estimate_time(
+        self, system_dimension: int, rank: int, num_iterations: int
+    ) -> float:
+        "Estimate the time complexity needed of the algorithm based on the rank and number of iterations."
+        return (
+            3 * self.c_1 * (rank**2) * system_dimension
+            + self.c_2 * rank**3
+            + num_iterations
+            * (
+                2 * self.c_3 * rank * system_dimension
+                + 2 * self.c_4 * (rank**2)
+                + 8 * self.c_5 * system_dimension
+                + self.c_6 * system_dimension**2
+            )
+        )
 
 
 def main(
@@ -89,19 +215,18 @@ def main(
 
     N = num_points
 
+    # Warm-up code to ensure that the preconditioned conjugate gradient solver is ready for timing
+    warm_up_code(N)
+
+    start_time = perf_counter()
+
     preconditioner = GreedilyPivotedCholeskyPreconditioner(
         K_adapted,
         max_rank=N,
         regularization_factor=regularization,
     )
 
-    def compute_time_complexity(k: int, num_iterations: int) -> float:
-        c_1 = 0.5
-        return (
-            3 * c_1 * (k**2) * N
-            + (1 / 6) * k**3
-            + num_iterations * (6 * N + N**2 + 2 * k * N + 2 * (k**2))
-        )
+    time_complexity_estimator = TimeComplexityEstimator()
 
     print("Estimating the best rank for the preconditioner...")
 
@@ -128,7 +253,9 @@ def main(
             )
         )
 
-        estimated_time = compute_time_complexity(rank, num_iterations)
+        estimated_time = time_complexity_estimator.estimate_time(
+            N, rank, num_iterations
+        )
         estimated_times.append(estimated_time)
 
         if estimated_time < best_estimated_time:
@@ -139,11 +266,12 @@ def main(
             print(f"Exiting early at rank {rank}")
             break
 
+    end_time = perf_counter()
+    duration = end_time - start_time
+
     print("Minimal estimated time is achieved for k =", best_rank)
     print("Minimal estimated time (number of operations):", best_estimated_time)
-
-    # Warm-up code to ensure that the preconditioned conjugate gradient solver is ready for timing
-    warm_up_code(N)
+    print(f"Time taken to estimate the best rank: {duration:.4g} seconds")
 
     # Solve the problem using PCG with the preconditioner of best found rank, and measure the real elapsed time
     start_time = perf_counter()
@@ -162,6 +290,9 @@ def main(
 
     end_time = perf_counter()
     duration = end_time - start_time
+    print(
+        f"Time taken to solve the system (with selected preconditioner rank k = {best_rank}): {duration:.4g} seconds"
+    )
     real_elapsed_time = duration
 
     ranks = list(range(preconditioner.max_rank))
