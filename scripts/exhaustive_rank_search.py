@@ -303,21 +303,11 @@ def plot_results(figure: Figure, results: ExhaustiveSearchResults) -> None:
             label="Not converged",
         )
 
-    ax.set_xlabel("Rank")
-    ax.set_ylabel("Elapsed time")
+    ax.set_xlabel("Rank of pivoted Cholesky preconditioner")
+    ax.set_ylabel("Elapsed time (seconds)")
 
     ax.legend()
     ax.grid()
-
-    # ax = figure.add_subplot(1, 2, 2)
-
-    # ax.plot(ranks, pivots, color="orange", label="Pivot value")
-
-    # ax.set_xlabel("Rank")
-    # ax.set_ylabel("Pivot norm")
-
-    # ax.legend()
-    # ax.grid()
 
 
 if __name__ == "__main__":
