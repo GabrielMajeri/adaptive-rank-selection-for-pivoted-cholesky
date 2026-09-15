@@ -15,7 +15,7 @@ from adaptive_rank.experiments.common import (
 def main(
     dataset: Annotated[
         str, typer.Option(help="Identifier of dataset to use.")
-    ] = "sgdml-benzene",
+    ] = "random-multivariate-normal",
     num_points: Annotated[
         int,
         typer.Option(

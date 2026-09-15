@@ -10,3 +10,5 @@ __pycache__/
 /results
 # Directory for plots
 /plots
+# Logs from various runs
+/logs

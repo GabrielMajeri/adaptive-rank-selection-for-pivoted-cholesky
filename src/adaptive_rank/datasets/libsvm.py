@@ -110,7 +110,7 @@ def load_raw_libsvm_dataset(
 def load_and_process_libsvm_dataset(
     dataset_kind: LibSVMDatasetKind,
     dataset_identifier: str,
-    max_vectors: int | None = None,
+    num_vectors: int | None = None,
     train_size: float | None = None,
     test_size: float | None = None,
     ignore_cache: bool = False,
@@ -125,9 +125,10 @@ def load_and_process_libsvm_dataset(
     if not ignore_cache:
         cache_directory.mkdir(parents=True, exist_ok=True)
 
+        N = num_vectors if num_vectors is not None else "all"
         cache_file_path = (
             cache_directory
-            / f"libsvm_{dataset_identifier}_N_{str(max_vectors) if max_vectors else 'all'}_train_{train_size}_test_{test_size}.npz"
+            / f"libsvm_{dataset_identifier}_N_{N}_train_{train_size}_test_{test_size}.npz"
         )
         if cache_file_path.exists():
             logger.info(
@@ -144,11 +145,24 @@ def load_and_process_libsvm_dataset(
         dataset_kind, dataset_identifier, data_directory
     )
 
-    cut_off = max_vectors
-    # Negative cut-off or None = use all vectors
-    if cut_off is not None and cut_off > 0:
-        features = features[:cut_off]
-        targets = targets[:cut_off]
+    available_vectors = len(features)
+    if num_vectors is None:
+        logger.info(f"Using all vectors in the dataset, N = {available_vectors}")
+    else:
+        logger.info(f"Using only the first {num_vectors} vectors in the dataset")
+
+        if num_vectors <= 0:
+            raise ValueError(
+                f"Requested {num_vectors} vectors, but the number of vectors must be positive"
+            )
+
+        if num_vectors > available_vectors:
+            raise ValueError(
+                f"Requested {num_vectors} vectors, but the dataset only contains {available_vectors} vectors"
+            )
+
+        features = features[:num_vectors]
+        targets = targets[:num_vectors]
 
     if test_size is None or test_size > 0:
         # Split the dataset into a training set and a validation set

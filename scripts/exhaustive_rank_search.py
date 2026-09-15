@@ -32,7 +32,7 @@ def main(
         str, typer.Option(help="Identifier of dataset to use.")
     ] = "random-multivariate-normal",
     num_points: Annotated[
-        int,
+        int | None,
         typer.Option(
             "--num-points",
             "-N",
@@ -47,7 +47,21 @@ def main(
             help="Dimension of each point's feature vector. Only relevant for synthetic datasets.",
         ),
     ] = 16,
-    seed: Annotated[int, typer.Option(help="Seed for random number generator")] = 42,
+    seed: Annotated[
+        int | None, typer.Option(help="Seed for random number generator")
+    ] = 42,
+    kernel_matrix_regularization_factor: Annotated[
+        float,
+        typer.Option(
+            help="Regularization factor for the kernel matrix. Added to the diagonal of the kernel matrix to ensure positive definiteness and improve numerical stability."
+        ),
+    ] = 1e-5,
+    preconditioner_regularization_factor: Annotated[
+        float,
+        typer.Option(
+            help="Regularization factor for the preconditioner. Added to the diagonal of the preconditioner matrix to ensure positive definiteness and improve numerical stability."
+        ),
+    ] = 1e-5,
     max_rank: Annotated[
         int | None,
         typer.Option(help="Rank up to which to exhaustively check solve time"),
@@ -94,14 +108,23 @@ def main(
     the pivoted Cholesky decomposition as a preconditioner)
     by repeatedly solving the system with preconditioners of various fixed ranks.
     """
-    max_rank = max_rank if max_rank is not None else num_points // 2
-
     results_directory = Path("results/exhaustive_search") / dataset
-    results_path = (
-        results_directory / f"N_{num_points}_max_k_{max_rank}_step_{rank_step}.json"
-    )
 
     if plot_only:
+        if not num_points:
+            print(
+                "[red]Error: --num-points must be specified when using --plot-only[/red]"
+            )
+            raise typer.Exit(1)
+
+        N = num_points
+
+        max_rank = max_rank if max_rank is not None else N // 2
+
+        results_path = (
+            results_directory / f"N_{N}_max_k_{max_rank}_step_{rank_step}.json"
+        )
+
         if not results_path.exists():
             print(f"[red]Error: results file '{results_path}' not found[/red]")
             raise typer.Exit(1)
@@ -116,7 +139,14 @@ def main(
         points = labeled_dataset.X_train
         b = labeled_dataset.y_train.squeeze()
 
-        regularization = 1e-5
+        N: int = points.shape[0]
+        D: int = points.shape[1]
+
+        max_rank = max_rank if max_rank is not None else N // 2
+
+        results_path = (
+            results_directory / f"N_{N}_max_k_{max_rank}_step_{rank_step}.json"
+        )
 
         if use_keops:
             print("Constructing kernel matrix using PyKeOps...")
@@ -124,17 +154,15 @@ def main(
             K_adapted = LazyTensorKernelAdapter(
                 K,
                 dtype=points.dtype,
-                regularization_factor=regularization,
+                regularization_factor=kernel_matrix_regularization_factor,
                 get_row=lambda row: rbf_kernel(points[row : row + 1], points).squeeze(),
             )
         else:
             print("Constructing kernel matrix using NumPy...")
-            K = rbf_kernel(points, points) + regularization * np.eye(
-                num_points, dtype=np.float64
-            )
+            K = rbf_kernel(
+                points, points
+            ) + kernel_matrix_regularization_factor * np.eye(N, dtype=np.float64)
             K_adapted = NumPyArrayAdapter(K)
-
-        N = num_points
 
         warm_up_code(N)
 
@@ -142,8 +170,6 @@ def main(
         elapsed_times: list[float] = []
         convergences: list[bool] = []
         pivots: list[float] = []
-
-        preconditioner_regularization_factor = 1e-3
 
         def construct_greedily_pivoted_cholesky_preconditioner(
             matrix: MatrixInterface, rank: int
@@ -176,6 +202,14 @@ def main(
             pivots.append(last_pivot)
 
         results = ExhaustiveSearchResults(
+            dataset=dataset,
+            num_points=N,
+            dimension=D,
+            seed=seed,
+            kernel_matrix_regularization_factor=kernel_matrix_regularization_factor,
+            preconditioner_regularization_factor=preconditioner_regularization_factor,
+            tolerance=tolerance,
+            max_iterations=max_iterations,
             ranks=ranks,
             elapsed_times=elapsed_times,
             convergences=convergences,
@@ -202,9 +236,7 @@ def main(
 
     plot_results(figure, results)
     figure.tight_layout()
-    figure.savefig(
-        plots_directory / f"N_{num_points}_max_k_{max_rank}_step_{rank_step}.pdf"
-    )
+    figure.savefig(plots_directory / f"N_{N}_max_k_{max_rank}_step_{rank_step}.pdf")
 
 
 def solve_system_using_pivoted_cholesky_preconditioner(

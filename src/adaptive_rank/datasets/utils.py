@@ -8,7 +8,7 @@ from .sgdml import load_and_process_sgdml_dataset
 
 def load_dataset(
     dataset: str,
-    num_points: int,
+    num_points: int | None = None,
     train_size: float | None = None,
     test_size: float | None = None,
     dimension: int | None = None,
@@ -19,17 +19,22 @@ def load_dataset(
     """
 
     if dataset == "random-multivariate-normal":
+        if num_points is None:
+            raise ValueError(
+                "Number of points must be specified for `random-multivariate-normal` dataset"
+            )
+
+        if dimension is None:
+            raise ValueError(
+                "Dimension must be specified for `random-multivariate-normal` dataset"
+            )
+
         if seed is None:
             raise ValueError(
                 "Seed must be specified for `random-multivariate-normal` dataset"
             )
 
         generator = np.random.default_rng(seed)
-
-        if dimension is None:
-            raise ValueError(
-                "Dimension must be specified for `random-multivariate-normal` dataset"
-            )
 
         X = generator.normal(size=(num_points, dimension))
         y = generator.normal(size=(num_points, 1))
@@ -63,7 +68,7 @@ def load_dataset(
         labeled_dataset = load_and_process_libsvm_dataset(
             LibSVMDatasetKind.REGRESSION,
             dataset_identifier,
-            max_vectors=num_points,
+            num_vectors=num_points,
             train_size=train_size,
             test_size=test_size,
         )
@@ -73,7 +78,7 @@ def load_dataset(
         dataset_identifier = dataset.split("-", 1)[1]
         labeled_dataset = load_and_process_sgdml_dataset(
             dataset_identifier,
-            max_vectors=num_points,
+            num_vectors=num_points,
             train_size=train_size,
             test_size=test_size,
         )

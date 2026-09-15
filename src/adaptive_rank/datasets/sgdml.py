@@ -212,7 +212,7 @@ def load_raw_sgdml_dataset(
 
 def load_and_process_sgdml_dataset(
     dataset_identifier: str,
-    max_vectors: int | None = None,
+    num_vectors: int | None = None,
     train_size: float | None = None,
     test_size: float | None = None,
     ignore_cache: bool = False,
@@ -233,9 +233,10 @@ def load_and_process_sgdml_dataset(
     if not ignore_cache:
         cache_directory.mkdir(parents=True, exist_ok=True)
 
+        N = num_vectors if num_vectors is not None else "all"
         cache_file_path = (
             cache_directory
-            / f"sgdml_{dataset_identifier}_N_{str(max_vectors) if max_vectors else 'all'}_train_{train_size}_test_{test_size}.npz"
+            / f"sgdml_{dataset_identifier}_N_{N}_train_{train_size}_test_{test_size}.npz"
         )
         if cache_file_path.exists():
             logger.info(
@@ -255,9 +256,15 @@ def load_and_process_sgdml_dataset(
     # 3 spatial dimensions for each atom
     assert positions.shape[2] == 3
 
-    cut_off = max_vectors
+    cut_off = num_vectors
     # Negative cut-off or None = use all vectors
     if cut_off is not None and cut_off > 0:
+        available_vectors = len(energies)
+        if cut_off > available_vectors:
+            raise ValueError(
+                f"Requested {cut_off} vectors, but the dataset only contains {available_vectors} vectors"
+            )
+
         # print(f"Limiting data set to first {cut_off} vectors")
         energies = energies[:cut_off]
         positions = positions[:cut_off]
