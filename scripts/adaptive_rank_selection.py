@@ -36,6 +36,12 @@ def main(
             help="Number of points of the dataset. Equal to the dimension of the kernel matrix.",
         ),
     ] = 1000,
+    all: Annotated[
+        bool,
+        typer.Option(
+            help="Use all points of the dataset. Overrides the `num_points` option."
+        ),
+    ] = False,
     dimension: Annotated[
         int | None,
         typer.Option(
@@ -81,6 +87,9 @@ def main(
     """Uses our method for adaptively selecting the rank of the low-rank approximation,
     in order to minimize the total elapsed time of the algorithm.
     """
+    if all:
+        num_points = None
+
     print(f"Loading dataset '{dataset}'...")
     labeled_dataset = load_dataset(dataset, num_points, 1.0, 0.0, dimension, seed)
 

@@ -39,6 +39,12 @@ def main(
             help="Number of points of the dataset. Equal to the dimension of the kernel matrix.",
         ),
     ] = 1000,
+    all: Annotated[
+        bool,
+        typer.Option(
+            help="Use all points of the dataset. Overrides the `num_points` option."
+        ),
+    ] = False,
     dimension: Annotated[
         int | None,
         typer.Option(
@@ -108,6 +114,9 @@ def main(
     the pivoted Cholesky decomposition as a preconditioner)
     by repeatedly solving the system with preconditioners of various fixed ranks.
     """
+    if all:
+        num_points = None
+
     results_directory = Path("results/exhaustive_search") / dataset
 
     if plot_only:

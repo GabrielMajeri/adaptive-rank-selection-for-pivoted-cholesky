@@ -27,6 +27,12 @@ def main(
             help="Number of points of the dataset. Equal to the dimension of the kernel matrix.",
         ),
     ] = 1000,
+    all: Annotated[
+        bool,
+        typer.Option(
+            help="Use all points of the dataset. Overrides the `num_points` option."
+        ),
+    ] = False,
     dimension: Annotated[
         int | None,
         typer.Option(
@@ -78,6 +84,9 @@ def main(
     """Solves a kernel ridge regression (KRR) problem with the preconditioned conjugate gradient method,
     using the low-rank approximation provided by the pivoted Cholesky decomposition as a preconditioner.
     """
+    if all:
+        num_points = None
+
     print(f"Loading dataset '{dataset}'...")
     labeled_dataset = load_dataset(dataset, num_points, 1.0, 0.0, dimension, seed)
 

@@ -32,24 +32,35 @@ class MolecularDynamicsData(NamedTuple):
 # List of supported sGDML datasets (each identified by an unique key).
 SGDML_DATASETS: dict[str, str] = {
     "aspirin": "md17_aspirin",
+    "azobenzene": "azobenzene_dft",
     "benzene": "md17_benzene2017",
     "ethanol": "md17_ethanol",
     "malonaldehyde": "md17_malonaldehyde",
+    "naphthalene": "md17_naphthalene",
+    "paracetamol": "paracetamol_dft",
+    "salicylic_acid": "md17_salicylic",
     "toluene": "md17_toluene",
     "uracil": "md17_uracil",
 }
 
 
 def download_sgdml_dataset(identifier: str, target_path: Path) -> None:
-    logger.debug(f"Downloading {identifier} dataset from sGDML")
+    if identifier not in SGDML_DATASETS:
+        raise ValueError(
+            f"Dataset identifier must be one of {list(SGDML_DATASETS.keys())}"
+        )
+
+    logger.debug(f"Downloading '{identifier}' dataset from sGDML")
 
     # Check if a file with the same name already exists
     if target_path.exists():
         logger.debug("File already exists, not downloading it again.")
         return
 
+    file_name = SGDML_DATASETS[identifier]
+
     # URL for the file (as provided on the sGDML website)
-    file_url = f"https://sgdml.org/secure_proxy.php?file=data/npz/{identifier}.npz"
+    file_url = f"https://sgdml.org/secure_proxy.php?file=data/npz/{file_name}.npz"
 
     logger.debug("Beginning data file download...")
     download_file(file_url, target_path.resolve())
@@ -178,7 +189,7 @@ def load_raw_sgdml_dataset(
         logger.info(
             f"Dataset file '{dataset_file.name}' doesn't exist, downloading it..."
         )
-        download_sgdml_dataset(SGDML_DATASETS[dataset_identifier], dataset_file)
+        download_sgdml_dataset(dataset_identifier, dataset_file)
     else:
         raise SGDMLDatasetError(
             "Requested sGDML dataset is missing from disk and downloading it has not been requested"
