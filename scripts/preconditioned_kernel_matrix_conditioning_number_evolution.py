@@ -76,6 +76,12 @@ def main(
             help="Step size for computing conditioning number estimates. Estimates are computed every 'estimate_computation_step' iterations of the preconditioner update."
         ),
     ] = 20,
+    interpolation_exponent: Annotated[
+        float,
+        typer.Option(
+            help="Exponent for the interpolation between the trace and pivot estimates. The interpolation is computed as (1 - p) * trace_estimate + p * pivot_estimate, where p = (rank / N) **  interpolation_exponent."
+        ),
+    ] = 0.1,
 ) -> None:
     """Estimates the conditioning number of a regularized kernel matrix
     as a function of the rank of the greedily pivoted Cholesky decomposition
@@ -115,6 +121,8 @@ def main(
     trace_estimates: list[float] = []
     normalized_trace_estimates: list[float] = []
 
+    interpolated_estimates: list[float] = []
+
     print("Computing conditioning number estimates as we go...")
 
     for rank in tqdm(range(N)):
@@ -132,29 +140,33 @@ def main(
                 1 + largest_eigenvalue / kernel_matrix_regularization_factor
             )
 
+            latest_pivot = preconditioner.latest_pivot
+
             # 1 + d_k / mu
             pivot_estimates.append(
-                1 + preconditioner.latest_pivot / kernel_matrix_regularization_factor
+                1 + latest_pivot / kernel_matrix_regularization_factor
             )
 
             # 1 + N d_k / mu
             scaled_pivot_estimates.append(
-                1
-                + N * preconditioner.latest_pivot / kernel_matrix_regularization_factor
+                1 + N * latest_pivot / kernel_matrix_regularization_factor
             )
 
             # 1 + sum(d_i) / mu
-            trace_estimates.append(
-                1
-                + np.sum(preconditioner._matrix_diagonal)
-                / kernel_matrix_regularization_factor
-            )
+            trace = np.sum(preconditioner._matrix_diagonal)
+            trace_estimates.append(1 + trace / kernel_matrix_regularization_factor)
 
             # 1 + sum(d_i) / (N * mu)
             normalized_trace_estimates.append(
-                1
-                + np.sum(preconditioner._matrix_diagonal)
-                / (N * kernel_matrix_regularization_factor)
+                1 + trace / (N * kernel_matrix_regularization_factor)
+            )
+
+            # Interpolate between the trace and the pivot estimates
+            p = (rank / N) ** interpolation_exponent
+            interpolation = trace * (1 - p) + latest_pivot * p
+
+            interpolated_estimates.append(
+                1 + interpolation / kernel_matrix_regularization_factor
             )
 
     print("Saving results to disk...")
@@ -204,6 +216,12 @@ def main(
         ranks,
         normalized_trace_estimates,
         label="Normalized trace estimate $1 + tr(R_k) / (N \\mu)$",
+    )
+    ax.plot(
+        ranks,
+        interpolated_estimates,
+        label="Interpolated estimate",
+        linestyle="--",
     )
 
     ax.set_yscale("log")
