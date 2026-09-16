@@ -1,9 +1,11 @@
 from pathlib import Path
 from time import perf_counter
-from typing import Annotated
+from typing import Annotated, cast
 
+import matplotlib.pyplot as plt
 import numpy as np
 import typer
+from matplotlib.axes import Axes
 from rich import print
 from tqdm import tqdm
 
@@ -19,7 +21,6 @@ from adaptive_rank.kernels import rbf_kernel, rbf_kernel_keops
 from adaptive_rank.model import TimeComplexityEstimator
 from adaptive_rank.preconditioner import (
     GreedilyPivotedCholeskyPreconditioner,
-    IterativePreconditioner,
 )
 from adaptive_rank.solver import PreconditionedConjugateGradientSolver
 
@@ -128,7 +129,7 @@ def main(
 
     start_time = perf_counter()
 
-    preconditioner: IterativePreconditioner = GreedilyPivotedCholeskyPreconditioner(
+    preconditioner = GreedilyPivotedCholeskyPreconditioner(
         K_adapted,
         max_rank=N,
         regularization_factor=preconditioner_regularization_factor,
@@ -140,18 +141,51 @@ def main(
 
     best_rank = -1
     best_estimated_time = np.inf
+    estimated_conditioning_numbers: list[float] = []
+    estimated_numbers_of_iterations: list[int] = []
     estimated_times: list[float] = []
 
     ranks_iterator = range(preconditioner.max_rank)
     if use_tqdm:
         ranks_iterator = tqdm(ranks_iterator, desc="Ranks")
 
+    cond_number_estimation_method = 0
+
     for rank in ranks_iterator:
         preconditioner.update_inner()
 
-        latest_pivot = preconditioner._pivots[-1]
-        estimated_cond = 1 + latest_pivot / kernel_matrix_regularization_factor
-        # print("kappa ~=", estimated_cond)
+        if cond_number_estimation_method == 0:
+            # Use the latest pivot to estimate the condition number
+            # 1 + d_k / mu
+            estimated_cond = 1 + preconditioner.latest_pivot / (
+                kernel_matrix_regularization_factor
+            )
+        elif cond_number_estimation_method == 1:
+            # Use estimate of residual matrix trace
+            # 1 + N * d_k / mu
+            estimated_cond = 1 + N * preconditioner.latest_pivot / (
+                kernel_matrix_regularization_factor
+            )
+        elif cond_number_estimation_method == 2:
+            # Use residual matrix trace
+            # 1 + tr(R) / mu
+            estimated_cond = (
+                1
+                + np.sum(preconditioner.residual_matrix_diagonal)
+                / kernel_matrix_regularization_factor
+            )
+        elif cond_number_estimation_method == 3:
+            # Use the trace normalized by the number of points
+            # 1 + tr(R) / (N * mu)
+            estimated_cond = 1 + np.sum(preconditioner.residual_matrix_diagonal) / (
+                N * kernel_matrix_regularization_factor
+            )
+        else:
+            raise ValueError(
+                f"Unknown condition number estimation method: {cond_number_estimation_method}"
+            )
+
+        estimated_conditioning_numbers.append(estimated_cond)
 
         num_iterations = int(
             np.ceil(
@@ -160,6 +194,7 @@ def main(
                 * np.log(initial_residual_error_norm / tolerance)
             )
         )
+        estimated_numbers_of_iterations.append(num_iterations)
 
         estimated_time = time_complexity_estimator.estimate_time(
             N, rank, num_iterations
@@ -180,6 +215,47 @@ def main(
     print("Minimal estimated time is achieved for k =", best_rank)
     print("Minimal estimated time (number of operations):", best_estimated_time)
     print(f"Time taken to estimate the best rank: {duration:.4g} seconds")
+
+    print("Plotting the theoretical model parameters...")
+    plots_directory = Path("plots/adaptive_search") / dataset
+    plots_directory.mkdir(parents=True, exist_ok=True)
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+
+    fig.suptitle("Adaptive rank selection -- Theoretical model")
+    ranks = list(range(len(estimated_conditioning_numbers)))
+
+    ax = cast(Axes, axes[0])
+    ax.set_title("Conditioning number model")
+
+    ax.plot(ranks, estimated_conditioning_numbers)
+    ax.set_xlabel("Rank of pivoted Cholesky preconditioner")
+    ax.set_ylabel("Estimated conditioning number")
+
+    ax.grid()
+
+    ax = cast(Axes, axes[1])
+    ax.set_title("Number of iterations model")
+
+    ax.plot(ranks, estimated_numbers_of_iterations)
+
+    ax.set_xlabel("Rank of pivoted Cholesky preconditioner")
+    ax.set_ylabel("Estimated number of iterations")
+
+    ax.grid()
+
+    ax = cast(Axes, axes[2])
+    ax.set_title("Time model")
+
+    ax.plot(ranks, estimated_times)
+
+    ax.set_xlabel("Rank of pivoted Cholesky preconditioner")
+    ax.set_ylabel("Estimated time (arbitrary units)")
+
+    ax.grid()
+
+    fig.tight_layout()
+    fig.savefig(plots_directory / f"N_{N}.pdf")
 
     print("Solving the system using PCG with the preconditioner of best found rank...")
 

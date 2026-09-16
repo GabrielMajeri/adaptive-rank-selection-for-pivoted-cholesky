@@ -82,12 +82,19 @@ def main(
             label="Not converged",
         )
 
+    # Determine at which y value to mark the best rank found by the adaptive method
+    # We will use the average of the two closest elapsed times from the exhaustive search results
     best_rank_index = bisect(
         exhaustive_search_results.ranks, adaptive_rank_selection_results.best_rank
     )
-    best_elapsed_time = (
-        elapsed_times[best_rank_index - 1] + elapsed_times[best_rank_index]
-    ) / 2
+    if best_rank_index == 0:
+        best_elapsed_time = elapsed_times[best_rank_index]
+    elif best_rank_index == len(elapsed_times):
+        best_elapsed_time = elapsed_times[best_rank_index - 1]
+    else:
+        best_elapsed_time = (
+            elapsed_times[best_rank_index - 1] + elapsed_times[best_rank_index]
+        ) / 2
 
     ax.scatter(
         adaptive_rank_selection_results.best_rank,
@@ -99,12 +106,13 @@ def main(
         zorder=3,
     )
 
-    ax.set_xlabel("Rank")
-    ax.set_ylabel("Elapsed time")
+    ax.set_xlabel("Rank of pivoted Cholesky preconditioner", fontsize=15)
+    ax.set_ylabel("Elapsed time (seconds)", fontsize=15)
 
-    legend = ax.legend()
+    legend = ax.legend(loc="upper right", fontsize=15)
     legend.legend_handles[-1]._sizes = [10**2]  # pyright: ignore[reportOptionalMemberAccess, reportAttributeAccessIssue]
 
+    ax.tick_params(axis="both", which="major", labelsize=15)
     ax.grid()
 
     fig.tight_layout()

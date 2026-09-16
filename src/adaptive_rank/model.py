@@ -140,14 +140,22 @@ class TimeComplexityEstimator:
     ) -> float:
         "Estimate the time complexity needed of the algorithm based on the rank and number of iterations."
         return (
-            2 * self.c_k_squared_N * (rank**2) * system_dimension
+            # Pivoted Cholesky factorization time complexity O(N*k(k-1)/2)
+            self.c_k_squared_N * ((rank * (rank - 1)) // 2) * system_dimension
+            # Capacitance matrix construction
+            + self.c_k_squared_N * (rank**2) * system_dimension
+            # Add regularization
             + self.c_k * rank
-            + self.c_k_cubed * rank**3
+            # Cholesky decomposition
+            + self.c_k_cubed * (1 / 3) * rank**3
             + num_iterations
             * (
+                # Terms from preconditioner application (Woodbury identity)
+                # + dot products in CG iteration
                 2 * self.c_k_N * rank * system_dimension
                 + 2 * self.c_k_squared * (rank**2)
                 + 6 * self.c_N * system_dimension
+                # Matrix-vector multiplication
                 + self.c_N_squared * system_dimension**2
             )
         )

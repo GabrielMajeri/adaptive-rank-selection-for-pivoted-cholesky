@@ -306,6 +306,10 @@ class PivotedCholeskyPreconditioner(IterativePreconditioner, ABC):
 
         return self._pivots[-1]
 
+    @property
+    def residual_matrix_diagonal(self) -> Vector:
+        return self._matrix_diagonal
+
 
 @numba.njit
 def _add_regularization_inplace(matrix: Matrix, factor: float) -> None:
