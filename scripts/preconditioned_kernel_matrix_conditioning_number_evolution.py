@@ -1,15 +1,18 @@
 from pathlib import Path
 from time import perf_counter
-from typing import Annotated, overload
+from typing import Annotated
 
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy
 import typer
 from pydantic import BaseModel
-from scipy.optimize import curve_fit
 from tqdm import tqdm
 
+from adaptive_rank.condition_number import (
+    fit_interpolation_exponent,
+    interpolate_conditioning_number_estimate,
+)
 from adaptive_rank.datasets.utils import load_dataset
 from adaptive_rank.interface import NumPyArrayAdapter
 from adaptive_rank.kernels import rbf_kernel
@@ -37,72 +40,6 @@ class KernelMatrixConditioningNumberEstimates(BaseModel):
 
     interpolated_estimates: list[float]
     "Estimates of the conditioning number of the preconditioned kernel matrix, computed by interpolating between the trace and pivot estimates, based on the rank of the greedily pivoted Cholesky decomposition used to precondition it."
-
-
-@overload
-def interpolate_conditioning_number_estimate(
-    rank: int,
-    system_dimension: int,
-    trace: float,
-    pivot: float,
-    exponent: float,
-) -> float: ...
-
-
-@overload
-def interpolate_conditioning_number_estimate(
-    rank: np.ndarray,
-    system_dimension: int | np.ndarray,
-    trace: np.ndarray,
-    pivot: np.ndarray,
-    exponent: float | np.ndarray,
-) -> np.ndarray: ...
-
-
-def interpolate_conditioning_number_estimate(
-    rank, system_dimension, trace, pivot, exponent
-):
-    """Interpolates between the trace and pivot estimates of the conditioning number
-    of the preconditioned and regularized kernel matrix,
-    based on the rank of the greedily pivoted Cholesky decomposition used to precondition it.
-    """
-    p = (rank / system_dimension) ** exponent
-    return (1 - p) * trace + p * pivot
-
-
-def fit_interpolation_exponent(
-    ranks: list[int],
-    system_dimension: int,
-    traces: list[float],
-    pivots: list[float],
-    eigenvalue_estimates: list[float],
-    initial_guess: float = 0.1,
-) -> float:
-    """Fits the optimal interpolation exponent to minimize the difference
-    between the interpolated conditioning number estimates and the eigenvalue-based estimate
-    (close to the ground truth).
-    """
-    ranks_np = np.asarray(ranks)
-    traces_np = np.asarray(traces)
-    pivots_np = np.asarray(pivots)
-
-    def interpolation_function(ranks: np.ndarray, exponents: np.ndarray) -> np.ndarray:
-        # Linearly interpolate between the ranks
-        traces = np.interp(ranks_np, ranks_np, traces_np)
-        pivots = np.interp(ranks_np, ranks_np, pivots_np)
-        return interpolate_conditioning_number_estimate(
-            ranks_np,
-            system_dimension,
-            traces,
-            pivots,
-            exponents,
-        )
-
-    # Non-linear least squares fitting to find the optimal exponent
-    popt, _ = curve_fit(
-        interpolation_function, ranks, eigenvalue_estimates, p0=[initial_guess]
-    )
-    return popt[0]
 
 
 def main(
@@ -145,7 +82,7 @@ def main(
         typer.Option(
             help="Step size for computing conditioning number estimates. Estimates are computed every 'estimate_computation_step' iterations of the preconditioner update."
         ),
-    ] = 20,
+    ] = 50,
 ) -> None:
     """Estimates the conditioning number of a regularized kernel matrix
     as a function of the rank of the greedily pivoted Cholesky decomposition

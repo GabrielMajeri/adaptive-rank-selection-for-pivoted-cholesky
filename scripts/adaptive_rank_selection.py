@@ -4,11 +4,16 @@ from typing import Annotated, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy
 import typer
 from matplotlib.axes import Axes
 from rich import print
 from tqdm import tqdm
 
+from adaptive_rank.condition_number import (
+    fit_interpolation_exponent,
+    interpolate_conditioning_number_estimate,
+)
 from adaptive_rank.datasets.utils import load_dataset
 from adaptive_rank.experiments import warm_up_code
 from adaptive_rank.experiments.common import AdaptiveRankSelectionResults
@@ -23,6 +28,68 @@ from adaptive_rank.preconditioner import (
     GreedilyPivotedCholeskyPreconditioner,
 )
 from adaptive_rank.solver import PreconditionedConjugateGradientSolver
+
+
+def fit_interpolation_exponent_on_subset(
+    vectors: np.ndarray,
+    kernel_matrix_regularization_factor: float,
+    preconditioner_regularization_factor: float,
+    rank_step_size: int = 50,
+) -> float:
+    """Fits the exponent used for interpolating between trace-based and pivot-based estimates
+    of the kernel matrix conditioning number, by comparing them to the eigenvalue-based estimates
+    on a smaller subset of the data.
+    """
+    n = vectors.shape[0]
+
+    K = rbf_kernel(vectors, vectors) + kernel_matrix_regularization_factor * np.eye(
+        n, dtype=np.float64
+    )
+
+    preconditioner = GreedilyPivotedCholeskyPreconditioner(
+        NumPyArrayAdapter(K),
+        max_rank=n,
+        regularization_factor=preconditioner_regularization_factor,
+    )
+
+    ranks: list[int] = []
+    eigenvalue_estimates: list[float] = []
+    pivot_estimates: list[float] = []
+    trace_estimates: list[float] = []
+
+    for rank in range(n):
+        preconditioner.update_inner()
+
+        if rank % rank_step_size != 0:
+            continue
+
+        ranks.append(rank)
+
+        U = preconditioner._preconditioner_upper[: rank + 1, :]
+        remainder_matrix = K - U.T @ U
+        largest_eigenvalue = scipy.linalg.eigh(
+            remainder_matrix, eigvals_only=True, subset_by_index=[n - 1, n - 1]
+        )[0]
+        eigenvalue_estimates.append(
+            1 + largest_eigenvalue / kernel_matrix_regularization_factor
+        )
+
+        latest_pivot = preconditioner.latest_pivot
+
+        # 1 + d_k / mu
+        pivot_estimates.append(1 + latest_pivot / kernel_matrix_regularization_factor)
+
+        # 1 + sum(d_i) / mu
+        trace = np.sum(preconditioner._matrix_diagonal)
+        trace_estimates.append(1 + trace / kernel_matrix_regularization_factor)
+
+    return fit_interpolation_exponent(
+        ranks,
+        n,
+        trace_estimates,
+        pivot_estimates,
+        eigenvalue_estimates,
+    )
 
 
 def main(
@@ -66,6 +133,18 @@ def main(
             help="Regularization factor for the preconditioner. Added to the diagonal of the preconditioner matrix to ensure positive definiteness and improve numerical stability."
         ),
     ] = 1e-5,
+    interpolation_exponent_fitting_subset_size: Annotated[
+        int,
+        typer.Option(
+            help="Size of the subset of the dataset used to fit the interpolation exponent."
+        ),
+    ] = 1000,
+    interpolation_exponent_fitting_step_size: Annotated[
+        int,
+        typer.Option(
+            help="Step size for the ranks used to fit the interpolation exponent."
+        ),
+    ] = 100,
     tolerance: Annotated[
         float,
         typer.Option(
@@ -100,6 +179,26 @@ def main(
     N: int = points.shape[0]
     D: int = points.shape[1]
     print(f"Dataset loaded. Using N = {N} vectors, each of dimension D = {D}")
+
+    print("Fitting the interpolation exponent on a subset of the dataset...")
+
+    start_time = perf_counter()
+
+    subset_size = min(interpolation_exponent_fitting_subset_size, N)
+    subset_indices = np.random.choice(N, size=subset_size, replace=False)
+    subset_vectors = points[subset_indices]
+    interpolation_exponent = fit_interpolation_exponent_on_subset(
+        subset_vectors,
+        kernel_matrix_regularization_factor,
+        preconditioner_regularization_factor,
+        interpolation_exponent_fitting_step_size,
+    )
+
+    end_time = perf_counter()
+    duration = end_time - start_time
+    print(f"Interpolation exponent fitted in {duration:.4g} seconds.")
+
+    print(f"Fitted interpolation exponent: {interpolation_exponent:.4g}")
 
     if use_keops:
         print("Constructing kernel matrix using PyKeOps...")
@@ -149,41 +248,21 @@ def main(
     if use_tqdm:
         ranks_iterator = tqdm(ranks_iterator, desc="Ranks")
 
-    cond_number_estimation_method = 0
-
     for rank in ranks_iterator:
         preconditioner.update_inner()
 
-        if cond_number_estimation_method == 0:
-            # Use the latest pivot to estimate the condition number
-            # 1 + d_k / mu
-            estimated_cond = 1 + preconditioner.latest_pivot / (
-                kernel_matrix_regularization_factor
-            )
-        elif cond_number_estimation_method == 1:
-            # Use estimate of residual matrix trace
-            # 1 + N * d_k / mu
-            estimated_cond = 1 + N * preconditioner.latest_pivot / (
-                kernel_matrix_regularization_factor
-            )
-        elif cond_number_estimation_method == 2:
-            # Use residual matrix trace
-            # 1 + tr(R) / mu
-            estimated_cond = (
-                1
-                + np.sum(preconditioner.residual_matrix_diagonal)
-                / kernel_matrix_regularization_factor
-            )
-        elif cond_number_estimation_method == 3:
-            # Use the trace normalized by the number of points
-            # 1 + tr(R) / (N * mu)
-            estimated_cond = 1 + np.sum(preconditioner.residual_matrix_diagonal) / (
-                N * kernel_matrix_regularization_factor
-            )
-        else:
-            raise ValueError(
-                f"Unknown condition number estimation method: {cond_number_estimation_method}"
-            )
+        trace_estimate = (
+            1
+            + float(np.sum(preconditioner.residual_matrix_diagonal))
+            / kernel_matrix_regularization_factor
+        )
+        pivot_estimate = (
+            1 + preconditioner.latest_pivot / kernel_matrix_regularization_factor
+        )
+
+        estimated_cond = interpolate_conditioning_number_estimate(
+            rank, N, trace_estimate, pivot_estimate, interpolation_exponent
+        )
 
         estimated_conditioning_numbers.append(estimated_cond)
 
@@ -204,9 +283,8 @@ def main(
         if estimated_time < best_estimated_time:
             best_estimated_time = estimated_time
             best_rank = rank
-
-        if estimated_time > 1.25 * best_estimated_time:
-            print(f"Exiting early at rank {rank}")
+        elif estimated_time > best_estimated_time:
+            print(f"Minimum found at rank {rank}")
             break
 
     end_time = perf_counter()
@@ -232,6 +310,8 @@ def main(
     ax.set_xlabel("Rank of pivoted Cholesky preconditioner")
     ax.set_ylabel("Estimated conditioning number")
 
+    ax.set_yscale("log")
+
     ax.grid()
 
     ax = cast(Axes, axes[1])
@@ -241,6 +321,8 @@ def main(
 
     ax.set_xlabel("Rank of pivoted Cholesky preconditioner")
     ax.set_ylabel("Estimated number of iterations")
+
+    ax.set_yscale("log")
 
     ax.grid()
 

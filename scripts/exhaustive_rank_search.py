@@ -89,7 +89,7 @@ def main(
         typer.Option(
             help="Maximum number of iterations for the conjugate gradient solver. If exceeded, the solver will be considered to have not converged."
         ),
-    ] = 1000,
+    ] = 3000,
     use_keops: Annotated[
         bool, typer.Option(help="Use PyKeOps for kernel matrix computation")
     ] = False,
