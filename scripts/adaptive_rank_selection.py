@@ -92,6 +92,105 @@ def fit_interpolation_exponent_on_subset(
     )
 
 
+def conjugate_gradient_iterations_bound(
+    conditioning_number: float,
+    initial_residual_error_norm: float,
+    tolerance: float,
+) -> int:
+    """Computes an upper bound on the number of iterations required for the conjugate gradient solver
+    to converge to a solution with residual error norm below the specified tolerance,
+    given an estimate of the conditioning number of the system matrix.
+    """
+    return int(
+        np.ceil(
+            0.5
+            * np.sqrt(conditioning_number)
+            * np.log(initial_residual_error_norm / tolerance)
+        )
+    )
+
+
+def fit_iteration_count_scaling_constant(
+    vectors: np.ndarray,
+    targets: np.ndarray,
+    kernel_matrix_regularization_factor: float,
+    preconditioner_regularization_factor: float,
+    initial_residual_error_norm: float,
+    tolerance: float,
+    interpolation_exponent: float,
+    max_iterations: int = 5000,
+    rank_step_size: int = 50,
+) -> float:
+    """Fits the scaling constant used for estimating the number of iterations
+    of the preconditioned conjugate gradient solver, by comparing the estimated number of iterations
+    to the real number of iterations on a smaller subset of the data.
+    """
+    n = vectors.shape[0]
+
+    K = rbf_kernel(vectors, vectors) + kernel_matrix_regularization_factor * np.eye(
+        n, dtype=np.float64
+    )
+
+    K_adapted = NumPyArrayAdapter(K)
+
+    preconditioner = GreedilyPivotedCholeskyPreconditioner(
+        NumPyArrayAdapter(K),
+        max_rank=n,
+        regularization_factor=preconditioner_regularization_factor,
+    )
+
+    ranks: list[int] = []
+    estimated_numbers_of_iterations: list[int] = []
+    measured_numbers_of_iterations: list[int] = []
+
+    for rank in range(n):
+        preconditioner.update_inner()
+
+        if rank % rank_step_size != 0:
+            continue
+
+        ranks.append(rank)
+
+        trace_estimate = (
+            1
+            + float(np.sum(preconditioner.residual_matrix_diagonal))
+            / kernel_matrix_regularization_factor
+        )
+        pivot_estimate = (
+            1 + preconditioner.latest_pivot / kernel_matrix_regularization_factor
+        )
+
+        estimated_cond = interpolate_conditioning_number_estimate(
+            rank, n, trace_estimate, pivot_estimate, interpolation_exponent
+        )
+
+        num_iterations_estimate = conjugate_gradient_iterations_bound(
+            estimated_cond, initial_residual_error_norm, tolerance
+        )
+
+        preconditioner.update_outer()
+
+        solver = PreconditionedConjugateGradientSolver(
+            K_adapted,
+            targets,
+            preconditioner,
+            tolerance,
+        )
+
+        _, num_iterations_real = solver.solve(max_iterations)
+
+        estimated_numbers_of_iterations.append(num_iterations_estimate)
+        measured_numbers_of_iterations.append(num_iterations_real)
+
+    # Fit the optimal scaling constant
+    scaling_constant = np.mean(
+        np.asarray(measured_numbers_of_iterations)
+        / np.asarray(estimated_numbers_of_iterations)
+    )
+
+    return scaling_constant
+
+
 def main(
     dataset: Annotated[
         str, typer.Option(help="Identifier of dataset to use.")
@@ -186,7 +285,10 @@ def main(
 
     subset_size = min(interpolation_exponent_fitting_subset_size, N)
     subset_indices = np.random.choice(N, size=subset_size, replace=False)
+
     subset_vectors = points[subset_indices]
+    subset_targets = b[subset_indices]
+
     interpolation_exponent = fit_interpolation_exponent_on_subset(
         subset_vectors,
         kernel_matrix_regularization_factor,
@@ -222,6 +324,25 @@ def main(
 
     initial_residual_error = b - K_adapted @ np.ones(len(b))
     initial_residual_error_norm = np.linalg.norm(initial_residual_error)
+
+    start_time = perf_counter()
+    iteration_count_scaling_constant = fit_iteration_count_scaling_constant(
+        subset_vectors,
+        subset_targets,
+        kernel_matrix_regularization_factor,
+        preconditioner_regularization_factor,
+        initial_residual_error_norm,
+        tolerance,
+        interpolation_exponent,
+        max_iterations,
+    )
+    end_time = perf_counter()
+    duration = end_time - start_time
+    print(f"Iteration count scaling constant fitted in {duration:.4g} seconds.")
+
+    print(
+        f"Fitted iteration count scaling constant: {iteration_count_scaling_constant:.4g}"
+    )
 
     # Warm-up code to ensure that the preconditioned conjugate gradient solver is ready for timing
     warm_up_code(N)
@@ -267,12 +388,8 @@ def main(
         )
         estimated_conditioning_numbers.append(estimated_cond)
 
-        num_iterations = int(
-            np.ceil(
-                0.5
-                * np.sqrt(estimated_cond)
-                * np.log(initial_residual_error_norm / tolerance)
-            )
+        num_iterations = conjugate_gradient_iterations_bound(
+            estimated_cond, initial_residual_error_norm, tolerance
         )
         estimated_numbers_of_iterations.append(num_iterations)
 
