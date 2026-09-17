@@ -176,6 +176,8 @@ def main(
         warm_up_code(N)
 
         ranks = list(range(0, max_rank, rank_step))
+        num_iterations_per_rank: list[int] = []
+        residual_error_norms: list[float] = []
         elapsed_times: list[float] = []
         convergences: list[bool] = []
         pivots: list[float] = []
@@ -196,7 +198,7 @@ def main(
             f"Solving system using pivoted Cholesky preconditioner with every rank from 0 to {max_rank}"
         )
         for target_rank in ranks_iterator:
-            elapsed_time, converged, last_pivot = (
+            num_iterations, residual_error_norm, elapsed_time, converged, last_pivot = (
                 solve_system_using_pivoted_cholesky_preconditioner(
                     K_adapted,
                     b,
@@ -206,6 +208,8 @@ def main(
                     max_iterations,
                 )
             )
+            num_iterations_per_rank.append(num_iterations)
+            residual_error_norms.append(residual_error_norm)
             elapsed_times.append(elapsed_time)
             convergences.append(converged)
             pivots.append(last_pivot)
@@ -220,6 +224,8 @@ def main(
             tolerance=tolerance,
             max_iterations=max_iterations,
             ranks=ranks,
+            num_iterations=num_iterations_per_rank,
+            residual_error_norms=residual_error_norms,
             elapsed_times=elapsed_times,
             convergences=convergences,
             pivots=pivots,
@@ -257,7 +263,7 @@ def solve_system_using_pivoted_cholesky_preconditioner(
     ],
     tolerance: float,
     max_iterations: int,
-) -> tuple[float, bool, float]:
+) -> tuple[int, float, float, bool, float]:
     """Solves the given linear system using the conjugate gradient method,
     with the partial pivoted Cholesky factorization as a preconditioner.
     """
@@ -279,7 +285,7 @@ def solve_system_using_pivoted_cholesky_preconditioner(
 
     converged = (num_iterations < max_iterations) and (residual_error_norm <= tolerance)
 
-    return elapsed_time, converged, last_pivot
+    return num_iterations, residual_error_norm, elapsed_time, converged, last_pivot
 
 
 def plot_results(figure: Figure, results: ExhaustiveSearchResults) -> None:

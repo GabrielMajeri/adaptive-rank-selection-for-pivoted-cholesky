@@ -240,6 +240,7 @@ def main(
 
     best_rank = -1
     best_estimated_time = np.inf
+    ranks: list[int] = []
     estimated_conditioning_numbers: list[float] = []
     estimated_numbers_of_iterations: list[int] = []
     estimated_times: list[float] = []
@@ -250,6 +251,7 @@ def main(
 
     for rank in ranks_iterator:
         preconditioner.update_inner()
+        ranks.append(rank)
 
         trace_estimate = (
             1
@@ -263,7 +265,6 @@ def main(
         estimated_cond = interpolate_conditioning_number_estimate(
             rank, N, trace_estimate, pivot_estimate, interpolation_exponent
         )
-
         estimated_conditioning_numbers.append(estimated_cond)
 
         num_iterations = int(
@@ -284,7 +285,7 @@ def main(
             best_estimated_time = estimated_time
             best_rank = rank
         elif estimated_time > best_estimated_time:
-            print(f"Minimum found at rank {rank}")
+            print(f"Minimum found after evaluating rank {rank}")
             break
 
     end_time = perf_counter()
@@ -301,7 +302,6 @@ def main(
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
 
     fig.suptitle("Adaptive rank selection -- Theoretical model")
-    ranks = list(range(len(estimated_conditioning_numbers)))
 
     ax = cast(Axes, axes[0])
     ax.set_title("Conditioning number model")
@@ -370,7 +370,6 @@ def main(
     )
     real_elapsed_time = duration
 
-    ranks = list(range(preconditioner.max_rank))
     results = AdaptiveRankSelectionResults(
         dataset=dataset,
         num_points=N,
@@ -381,6 +380,7 @@ def main(
         tolerance=tolerance,
         max_iterations=max_iterations,
         ranks=ranks,
+        estimated_num_iterations=estimated_numbers_of_iterations,
         estimated_times=estimated_times,
         best_rank=best_rank,
         best_estimated_time=best_estimated_time,
