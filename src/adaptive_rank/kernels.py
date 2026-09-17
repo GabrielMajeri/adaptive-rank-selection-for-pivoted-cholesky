@@ -1,9 +1,17 @@
 import math
+from enum import StrEnum
 
 import numpy as np
 from pykeops.numpy import LazyTensor
 
 from .types import Array
+
+
+class KernelFunction(StrEnum):
+    "Enum for kernel functions we support."
+
+    RBF = "rbf"
+    EXPONENTIAL = "exponential"
 
 
 def rbf_kernel(X: Array, Y: Array, bandwidth: float | None = None) -> Array:
@@ -50,3 +58,28 @@ def rbf_kernel_keops(X: Array, Y: Array) -> LazyTensor:
     K_ij = (-D_ij / X.shape[-1]).exp()
 
     return K_ij
+
+
+def exponential_kernel(X: Array, Y: Array, bandwidth: float | None = None) -> Array:
+    """Evaluates the exponential kernel on two sets of vectors,
+    computing the pairwise inner products (the vectors are assumed to all have
+    the same number of coordinates).
+
+    The exponential kernel is given by
+        K(x, y) = exp(- ||x - y|| / \\sigma)
+    where N is the dimension of the vectors.
+    """
+    if bandwidth is None:
+        bandwidth = math.sqrt(X.shape[-1])
+
+    X_squared = np.sum(np.square(X), axis=-1)[:, np.newaxis]
+    Y_squared = np.sum(np.square(Y), axis=-1)[np.newaxis, :]
+
+    # Note that ||X - Y||^2 = <X - Y, X - Y> = X^2 + Y^2 - 2 <X, Y>
+    result = X_squared + Y_squared - 2 * X @ Y.T
+
+    # Clip it to positive entries (due to numerical errors, some entries could be negative)
+    result = result.clip(0.0, None)
+
+    # Formula for exponential kernel
+    return np.exp(-np.sqrt(result) / bandwidth)

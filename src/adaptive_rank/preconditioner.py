@@ -1,5 +1,6 @@
 import math
 from abc import ABC, abstractmethod
+from enum import StrEnum
 from typing import cast, final, override
 
 import numba
@@ -125,6 +126,14 @@ class IdentityPreconditioner(StaticPreconditioner):
     @override
     def apply(self, rhs: Vector) -> Vector:
         return rhs
+
+
+class PivotedCholeskyStrategy(StrEnum):
+    "Enumeration of pivot-selection strategies for the pivoted Cholesky decomposition."
+
+    GREEDY = "greedy"
+    UNIFORM = "uniform"
+    RPCHOLESKY = "rpcholesky"
 
 
 class PivotedCholeskyPreconditioner(IterativePreconditioner, ABC):

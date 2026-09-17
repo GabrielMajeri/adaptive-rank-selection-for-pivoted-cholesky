@@ -9,7 +9,10 @@ class ExperimentResults(BaseModel):
     dimension: int
     seed: int | None
 
+    kernel_function: str
     kernel_matrix_regularization_factor: float
+
+    preconditioner: str
     preconditioner_regularization_factor: float
 
     tolerance: float

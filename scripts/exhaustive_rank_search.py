@@ -18,10 +18,17 @@ from adaptive_rank.interface import (
     MatrixInterface,
     NumPyArrayAdapter,
 )
-from adaptive_rank.kernels import rbf_kernel, rbf_kernel_keops
+from adaptive_rank.kernels import (
+    KernelFunction,
+    exponential_kernel,
+    rbf_kernel,
+    rbf_kernel_keops,
+)
 from adaptive_rank.preconditioner import (
     GreedilyPivotedCholeskyPreconditioner,
     PivotedCholeskyPreconditioner,
+    PivotedCholeskyStrategy,
+    UniformlyRandomPivotedCholeskyPreconditioner,
 )
 from adaptive_rank.solver import PreconditionedConjugateGradientSolver
 from adaptive_rank.types import Vector
@@ -56,12 +63,24 @@ def main(
     seed: Annotated[
         int | None, typer.Option(help="Seed for random number generator")
     ] = 42,
+    kernel_function: Annotated[
+        KernelFunction,
+        typer.Option(
+            help=f"Kernel function to use for constructing the kernel matrix. Options: {', '.join([k.value for k in KernelFunction])}"
+        ),
+    ] = KernelFunction.RBF,
     kernel_matrix_regularization_factor: Annotated[
         float,
         typer.Option(
             help="Regularization factor for the kernel matrix. Added to the diagonal of the kernel matrix to ensure positive definiteness and improve numerical stability."
         ),
     ] = 1e-5,
+    preconditioner: Annotated[
+        PivotedCholeskyStrategy,
+        typer.Option(
+            help=f"Preconditioner to use for the conjugate gradient solver. Options: {', '.join([p.value for p in PivotedCholeskyStrategy])}"
+        ),
+    ] = PivotedCholeskyStrategy.GREEDY,
     preconditioner_regularization_factor: Annotated[
         float,
         typer.Option(
@@ -117,7 +136,12 @@ def main(
     if all:
         num_points = None
 
-    results_directory = Path("results/exhaustive_search") / dataset
+    results_directory = (
+        Path("results/exhaustive_search")
+        / dataset
+        / f"kernel_{kernel_function.value}"
+        / f"preconditioner_{preconditioner.value}"
+    )
 
     if plot_only:
         if not num_points:
@@ -159,7 +183,13 @@ def main(
 
         if use_keops:
             print("Constructing kernel matrix using PyKeOps...")
-            K = rbf_kernel_keops(points, points)
+            if kernel_function == KernelFunction.RBF:
+                K = rbf_kernel_keops(points, points)
+            else:
+                raise NotImplementedError(
+                    f"Unsupported kernel function for PyKeOps: '{kernel_function.value}'"
+                )
+
             K_adapted = LazyTensorKernelAdapter(
                 K,
                 dtype=points.dtype,
@@ -168,9 +198,16 @@ def main(
             )
         else:
             print("Constructing kernel matrix using NumPy...")
-            K = rbf_kernel(
-                points, points
-            ) + kernel_matrix_regularization_factor * np.eye(N, dtype=np.float64)
+            if kernel_function == KernelFunction.RBF:
+                K = rbf_kernel(points, points)
+            elif kernel_function == KernelFunction.EXPONENTIAL:
+                K = exponential_kernel(points, points)
+            else:
+                raise NotImplementedError(
+                    f"Unsupported kernel function for NumPy: '{kernel_function.value}'"
+                )
+
+            K += kernel_matrix_regularization_factor * np.eye(N, dtype=np.float64)
             K_adapted = NumPyArrayAdapter(K)
 
         warm_up_code(N)
@@ -182,12 +219,22 @@ def main(
         convergences: list[bool] = []
         pivots: list[float] = []
 
-        def construct_greedily_pivoted_cholesky_preconditioner(
+        def construct_pivoted_cholesky_preconditioner(
             matrix: MatrixInterface, rank: int
-        ) -> GreedilyPivotedCholeskyPreconditioner:
-            return GreedilyPivotedCholeskyPreconditioner(
-                matrix, rank, preconditioner_regularization_factor, rank
-            )
+        ) -> PivotedCholeskyPreconditioner:
+            if preconditioner == PivotedCholeskyStrategy.GREEDY:
+                return GreedilyPivotedCholeskyPreconditioner(
+                    matrix, rank, preconditioner_regularization_factor, rank
+                )
+            elif preconditioner == PivotedCholeskyStrategy.UNIFORM:
+                generator = np.random.default_rng(seed)
+                return UniformlyRandomPivotedCholeskyPreconditioner(
+                    generator, matrix, rank, preconditioner_regularization_factor
+                )
+            else:
+                raise NotImplementedError(
+                    f"Unsupported preconditioner strategy: '{preconditioner.value}'"
+                )
 
         if use_tqdm:
             ranks_iterator = tqdm(ranks)
@@ -203,7 +250,7 @@ def main(
                     K_adapted,
                     b,
                     target_rank,
-                    construct_greedily_pivoted_cholesky_preconditioner,
+                    construct_pivoted_cholesky_preconditioner,
                     tolerance,
                     max_iterations,
                 )
@@ -219,7 +266,9 @@ def main(
             num_points=N,
             dimension=D,
             seed=seed,
+            kernel_function=kernel_function.value,
             kernel_matrix_regularization_factor=kernel_matrix_regularization_factor,
+            preconditioner=preconditioner.value,
             preconditioner_regularization_factor=preconditioner_regularization_factor,
             tolerance=tolerance,
             max_iterations=max_iterations,
@@ -238,7 +287,12 @@ def main(
             file.write(results.model_dump_json(indent=2))
 
     print("Plotting results...")
-    plots_directory = Path("plots/exhaustive_search") / dataset
+    plots_directory = (
+        Path("plots/exhaustive_search")
+        / dataset
+        / f"kernel_{kernel_function.value}"
+        / f"preconditioner_{preconditioner.value}"
+    )
     plots_directory.mkdir(parents=True, exist_ok=True)
 
     figure = plt.figure(dpi=200)
