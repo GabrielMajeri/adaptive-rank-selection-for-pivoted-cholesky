@@ -15,3 +15,32 @@ $$
 where $y = L^{-1} x$. If our low-rank approximation is good, this new system will have a much smaller conditioning number (hence, CG will converge faster) and we can efficiently compute the solves involving the lower/upper-triangular systems $L$ and $L^{\intercal}$.
 
 The only issue now is to determine how to choose $k$, the target rank of the approximation, the only remaining hyperparameter. Larger values of $k$ should result in smaller conditioning numbers for the preconditioned system and hence less steps to convergence. However, they also require more computational effort to construct the LRA and each step of the solver is a bit more expensive (since applying the preconditioner involves solving a triangular system of dimension $k^2$). Therefore, some care needs to be taken to find the optimal compromise between the fidelity of the low-rank approximation and the construction cost, to **minimize the elapsed real time** of the overall process.
+
+This repository implements an **adaptive algorithm** for selecting the rank to use at runtime. It uses a theoretical model for the overall method's execution time, together with some empirically-measured constants (dataset-specific).
+
+## Datasets
+
+We've tested our approach on the following datasets:
+
+- A set of $N$ random vectors in $\mathbb{R}^d$ with $d = 16$, sampled from the [multivariate standard normal distribution](https://en.wikipedia.org/wiki/Multivariate_normal_distribution).
+
+- Several [regression datasets](https://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/regression.html) from [LIBSVM](https://www.csie.ntu.edu.tw/~cjlin/libsvm/): `cpusmall`, `cadata`, `YearPredictionMSD`
+
+- Molecular dynamics (potential energy surface prediction) datasets from [sGDML](https://www.sgdml.org/) (MD17): `aspirin`, `azobenzene`, `benzene`, `ethanol`, `malonaldehyde`, `naphthalene`, `paracetamol`, `salicylic_acid`, `toluene`, `uracil`
+
+## Running the code
+
+Clone this repo then set up a [Python](https://www.python.org/) virtual environment. We recommend using [uv](https://docs.astral.sh/uv/). Then install the required dependencies by running
+
+```shell
+uv pip install .
+```
+
+in this directory (remove the `uv` in front if using vanilla `pip`).
+
+The available scripts (used to generate some of the figures in our paper) can be found in the [`scripts`](scripts) directory. Check the [README](scripts/README.md) file in that subdirectory for more details.
+
+## Credits
+
+Gabriel Majeri & Cristian Rusu <br/>
+University of Bucharest
