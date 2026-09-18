@@ -15,8 +15,13 @@ from adaptive_rank.condition_number import (
 )
 from adaptive_rank.datasets.utils import load_dataset
 from adaptive_rank.interface import NumPyArrayAdapter
-from adaptive_rank.kernels import rbf_kernel
-from adaptive_rank.preconditioner import GreedilyPivotedCholeskyPreconditioner
+from adaptive_rank.kernels import KernelFunction, exponential_kernel, rbf_kernel
+from adaptive_rank.preconditioner import (
+    GreedilyPivotedCholeskyPreconditioner,
+    PivotedCholeskyStrategy,
+    RandomlyPivotedCholeskyPreconditioner,
+    UniformlyRandomPivotedCholeskyPreconditioner,
+)
 
 
 class KernelMatrixConditioningNumberEstimates(BaseModel):
@@ -65,12 +70,24 @@ def main(
     seed: Annotated[
         int | None, typer.Option(help="Seed for random number generator")
     ] = 42,
+    kernel_function: Annotated[
+        KernelFunction,
+        typer.Option(
+            help=f"Kernel function to use for constructing the kernel matrix. Options: {', '.join([k.value for k in KernelFunction])}"
+        ),
+    ] = KernelFunction.RBF,
     kernel_matrix_regularization_factor: Annotated[
         float,
         typer.Option(
             help="Regularization factor for the kernel matrix. Added to the diagonal of the kernel matrix to ensure positive definiteness and improve numerical stability."
         ),
     ] = 1e-5,
+    pivoting_strategy: Annotated[
+        PivotedCholeskyStrategy,
+        typer.Option(
+            help=f"Preconditioner to use for the conjugate gradient solver. Options: {', '.join([p.value for p in PivotedCholeskyStrategy])}"
+        ),
+    ] = PivotedCholeskyStrategy.GREEDY,
     preconditioner_regularization_factor: Annotated[
         float,
         typer.Option(
@@ -100,20 +117,45 @@ def main(
 
     print("Constructing kernel matrix using NumPy...")
     start_time = perf_counter()
-    K = rbf_kernel(points, points) + kernel_matrix_regularization_factor * np.eye(
-        N, dtype=np.float64
-    )
+    if kernel_function == KernelFunction.RBF:
+        K = rbf_kernel(points, points)
+    elif kernel_function == KernelFunction.EXPONENTIAL:
+        K = exponential_kernel(points, points)
+    else:
+        raise ValueError("Unsupported kernel function.")
+
+    K += kernel_matrix_regularization_factor * np.eye(N, dtype=np.float64)
+
     K_adapted = NumPyArrayAdapter(K)
     end_time = perf_counter()
     duration = end_time - start_time
     print(f"Kernel matrix constructed in {duration:.4g} seconds.")
 
-    print("Starting to construct greedily pivoted Cholesky preconditioner...")
-    preconditioner = GreedilyPivotedCholeskyPreconditioner(
-        K_adapted,
-        max_rank=N,
-        regularization_factor=preconditioner_regularization_factor,
-    )
+    print("Starting to construct preconditioner...")
+    if pivoting_strategy == PivotedCholeskyStrategy.GREEDY:
+        preconditioner = GreedilyPivotedCholeskyPreconditioner(
+            K_adapted,
+            max_rank=N,
+            regularization_factor=preconditioner_regularization_factor,
+        )
+    elif pivoting_strategy == PivotedCholeskyStrategy.UNIFORM_RANDOM:
+        generator = np.random.default_rng(seed)
+        preconditioner = UniformlyRandomPivotedCholeskyPreconditioner(
+            generator,
+            K_adapted,
+            max_rank=N,
+            regularization_factor=preconditioner_regularization_factor,
+        )
+    elif pivoting_strategy == PivotedCholeskyStrategy.RPCHOLESKY:
+        generator = np.random.default_rng(seed)
+        preconditioner = RandomlyPivotedCholeskyPreconditioner(
+            generator,
+            K_adapted,
+            max_rank=N,
+            regularization_factor=preconditioner_regularization_factor,
+        )
+    else:
+        raise ValueError("Unsupported pivoting strategy")
 
     ranks: list[int] = []
     eigenvalue_estimates: list[float] = []
@@ -182,6 +224,8 @@ def main(
     print("Saving results to disk...")
     results_directory = (
         Path("results/preconditioned_kernel_matrix_conditioning_number_estimates")
+        / f"kernel_{kernel_function.value}"
+        / f"pivoting_{pivoting_strategy.value}"
         / dataset
     )
     results_directory.mkdir(parents=True, exist_ok=True)

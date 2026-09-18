@@ -8,6 +8,8 @@ from adaptive_rank.experiments.common import (
     AdaptiveRankSelectionResults,
     ExhaustiveSearchResults,
 )
+from adaptive_rank.kernels import KernelFunction
+from adaptive_rank.preconditioner import PivotedCholeskyStrategy
 
 
 def main(
@@ -22,6 +24,18 @@ def main(
             help="Number of points of the dataset. Equal to the dimension of the kernel matrix.",
         ),
     ] = 1000,
+    kernel_function: Annotated[
+        KernelFunction,
+        typer.Option(
+            help=f"Kernel function to use for constructing the kernel matrix. Options: {', '.join([k.value for k in KernelFunction])}"
+        ),
+    ] = KernelFunction.RBF,
+    pivoting_strategy: Annotated[
+        PivotedCholeskyStrategy,
+        typer.Option(
+            help=f"Preconditioner to use for the conjugate gradient solver. Options: {', '.join([p.value for p in PivotedCholeskyStrategy])}"
+        ),
+    ] = PivotedCholeskyStrategy.GREEDY,
     max_rank: Annotated[
         int | None,
         typer.Option(help="Rank up to which to exhaustively check solve time"),
@@ -49,6 +63,8 @@ def main(
     exhaustive_search_results_file = (
         results_directory
         / "exhaustive_search"
+        / f"kernel_{kernel_function.value}"
+        / f"pivoting_{pivoting_strategy.value}"
         / dataset
         / f"N_{N}_max_k_{max_rank}_step_{rank_step}.json"
     )
@@ -59,7 +75,12 @@ def main(
         )
 
     adaptive_rank_selection_results_file = (
-        results_directory / "adaptive_rank_selection" / dataset / f"N_{N}.json"
+        results_directory
+        / "adaptive_rank_selection"
+        / f"kernel_{kernel_function.value}"
+        / f"pivoting_{pivoting_strategy.value}"
+        / dataset
+        / f"N_{N}.json"
     )
 
     if not adaptive_rank_selection_results_file.exists():
