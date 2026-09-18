@@ -423,10 +423,12 @@ class RandomlyPivotedCholeskyPreconditioner(PivotedCholeskyPreconditioner):
         self._ensure_capacity()
 
         available_indices = list(self._available_indices)
-        normalized_diagonal = self._matrix_diagonal / self._matrix_diagonal.sum()
+
+        available_diagonal = self._matrix_diagonal[available_indices]
+        normalized_diagonal = available_diagonal / available_diagonal.sum()
 
         pivot = self._generator.choice(
-            available_indices, size=1, p=normalized_diagonal[available_indices]
+            available_indices, size=1, p=normalized_diagonal
         ).item()
         self._indices.append(pivot)
         self._available_indices.remove(pivot)
