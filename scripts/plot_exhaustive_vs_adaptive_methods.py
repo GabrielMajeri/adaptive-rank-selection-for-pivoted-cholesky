@@ -10,6 +10,8 @@ from adaptive_rank.experiments.common import (
     AdaptiveRankSelectionResults,
     ExhaustiveSearchResults,
 )
+from adaptive_rank.kernels import KernelFunction
+from adaptive_rank.preconditioner import PivotedCholeskyStrategy
 
 
 def main(
@@ -24,6 +26,18 @@ def main(
             help="Number of points of the dataset. Equal to the dimension of the kernel matrix.",
         ),
     ] = 1000,
+    kernel_function: Annotated[
+        KernelFunction,
+        typer.Option(
+            help=f"Kernel function to use for constructing the kernel matrix. Options: {', '.join([k.value for k in KernelFunction])}"
+        ),
+    ] = KernelFunction.RBF,
+    pivoting_strategy: Annotated[
+        PivotedCholeskyStrategy,
+        typer.Option(
+            help=f"Preconditioner to use for the conjugate gradient solver. Options: {', '.join([p.value for p in PivotedCholeskyStrategy])}"
+        ),
+    ] = PivotedCholeskyStrategy.GREEDY,
     max_rank: Annotated[
         int | None,
         typer.Option(help="Rank up to which solve time was exhaustively checked."),
@@ -42,7 +56,7 @@ def main(
     max_rank = max_rank if max_rank is not None else num_points // 2
 
     exhaustive_search_results_path = Path(
-        f"results/exhaustive_search/{dataset}/N_{num_points}_max_k_{max_rank}_step_{rank_step}.json"
+        f"results/exhaustive_search/kernel_{kernel_function.value}/pivoting_{pivoting_strategy.value}/{dataset}/N_{num_points}_max_k_{max_rank}_step_{rank_step}.json"
     )
     with open(exhaustive_search_results_path, "r") as file:
         exhaustive_search_results = ExhaustiveSearchResults.model_validate_json(
@@ -50,7 +64,7 @@ def main(
         )
 
     adaptive_rank_selection_results_path = Path(
-        f"results/adaptive_rank_selection/{dataset}/N_{num_points}.json"
+        f"results/adaptive_rank_selection/kernel_{kernel_function.value}/pivoting_{pivoting_strategy.value}/{dataset}/N_{num_points}.json"
     )
     with open(adaptive_rank_selection_results_path, "r") as file:
         adaptive_rank_selection_results = (
@@ -117,7 +131,12 @@ def main(
 
     fig.tight_layout()
 
-    plots_directory = Path("plots/exhaustive_vs_adaptive") / dataset
+    plots_directory = (
+        Path("plots/exhaustive_vs_adaptive")
+        / f"kernel_{kernel_function.value}"
+        / f"pivoting_{pivoting_strategy.value}"
+        / dataset
+    )
     plots_directory.mkdir(parents=True, exist_ok=True)
 
     fig.savefig(plots_directory / f"comparison_{dataset}_N_{num_points}.pdf")
