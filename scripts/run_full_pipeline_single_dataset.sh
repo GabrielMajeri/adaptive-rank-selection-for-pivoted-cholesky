@@ -1,18 +1,18 @@
 #!/bin/bash
 
-set -e
+set -ex
 
 # Dataset selection
-DATASET=random-multivariate-normal
+# DATASET=random-multivariate-normal
 # DATASET=libsvm-cpusmall
 # DATASET=sgdml-benzene
-# DATASET=sgdml-uracil
+DATASET=sgdml-uracil
 
 # Experimental parameters
-NUM_POINTS=1000
-PIVOTING_STRATEGY=rpcholesky
-MAX_RANK=1000
-RANK_STEP=50
+NUM_POINTS=5000
+PIVOTING_STRATEGY=greedy
+MAX_RANK=2500
+RANK_STEP=100
 
 # Run the exhaustive rank search script
 uv run scripts/exhaustive_rank_search.py \
