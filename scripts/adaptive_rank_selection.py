@@ -22,17 +22,27 @@ from adaptive_rank.interface import (
     MatrixInterface,
     NumPyArrayAdapter,
 )
-from adaptive_rank.kernels import rbf_kernel, rbf_kernel_keops
+from adaptive_rank.kernels import (
+    KernelFunction,
+    exponential_kernel,
+    rbf_kernel,
+    rbf_kernel_keops,
+)
 from adaptive_rank.model import TimeComplexityEstimator
 from adaptive_rank.preconditioner import (
     GreedilyPivotedCholeskyPreconditioner,
+    PivotedCholeskyStrategy,
+    RandomlyPivotedCholeskyPreconditioner,
+    UniformlyRandomPivotedCholeskyPreconditioner,
 )
 from adaptive_rank.solver import PreconditionedConjugateGradientSolver
 
 
 def fit_interpolation_exponent_on_subset(
     vectors: np.ndarray,
+    kernel_function: KernelFunction,
     kernel_matrix_regularization_factor: float,
+    pivoting_strategy: PivotedCholeskyStrategy,
     preconditioner_regularization_factor: float,
     rank_step_size: int = 50,
 ) -> float:
@@ -42,15 +52,41 @@ def fit_interpolation_exponent_on_subset(
     """
     n = vectors.shape[0]
 
-    K = rbf_kernel(vectors, vectors) + kernel_matrix_regularization_factor * np.eye(
-        n, dtype=np.float64
-    )
+    if kernel_function == KernelFunction.RBF:
+        K = rbf_kernel(vectors, vectors)
+    elif kernel_function == KernelFunction.EXPONENTIAL:
+        K = exponential_kernel(vectors, vectors)
+    else:
+        raise ValueError("Unsupported kernel function")
 
-    preconditioner = GreedilyPivotedCholeskyPreconditioner(
-        NumPyArrayAdapter(K),
-        max_rank=n,
-        regularization_factor=preconditioner_regularization_factor,
-    )
+    K += kernel_matrix_regularization_factor * np.eye(n, dtype=np.float64)
+
+    K_adapted = NumPyArrayAdapter(K)
+
+    if pivoting_strategy == PivotedCholeskyStrategy.GREEDY:
+        preconditioner = GreedilyPivotedCholeskyPreconditioner(
+            K_adapted,
+            max_rank=n,
+            regularization_factor=preconditioner_regularization_factor,
+        )
+    elif pivoting_strategy == PivotedCholeskyStrategy.UNIFORM_RANDOM:
+        generator = np.random.default_rng()
+        preconditioner = UniformlyRandomPivotedCholeskyPreconditioner(
+            generator,
+            K_adapted,
+            max_rank=n,
+            regularization_factor=preconditioner_regularization_factor,
+        )
+    elif pivoting_strategy == PivotedCholeskyStrategy.RPCHOLESKY:
+        generator = np.random.default_rng()
+        preconditioner = RandomlyPivotedCholeskyPreconditioner(
+            generator,
+            K_adapted,
+            max_rank=n,
+            regularization_factor=preconditioner_regularization_factor,
+        )
+    else:
+        raise ValueError("Unsupported pivoting strategy")
 
     ranks: list[int] = []
     eigenvalue_estimates: list[float] = []
@@ -220,12 +256,24 @@ def main(
     seed: Annotated[
         int | None, typer.Option(help="Seed for random number generator")
     ] = 42,
+    kernel_function: Annotated[
+        KernelFunction,
+        typer.Option(
+            help=f"Kernel function to use for constructing the kernel matrix. Options: {', '.join([k.value for k in KernelFunction])}"
+        ),
+    ] = KernelFunction.RBF,
     kernel_matrix_regularization_factor: Annotated[
         float,
         typer.Option(
             help="Regularization factor for the kernel matrix. Added to the diagonal of the kernel matrix to ensure positive definiteness and improve numerical stability."
         ),
     ] = 1e-5,
+    pivoting_strategy: Annotated[
+        PivotedCholeskyStrategy,
+        typer.Option(
+            help=f"Preconditioner to use for the conjugate gradient solver. Options: {', '.join([p.value for p in PivotedCholeskyStrategy])}"
+        ),
+    ] = PivotedCholeskyStrategy.GREEDY,
     preconditioner_regularization_factor: Annotated[
         float,
         typer.Option(
@@ -291,7 +339,9 @@ def main(
 
     interpolation_exponent = fit_interpolation_exponent_on_subset(
         subset_vectors,
+        kernel_function,
         kernel_matrix_regularization_factor,
+        pivoting_strategy,
         preconditioner_regularization_factor,
         interpolation_exponent_fitting_step_size,
     )
@@ -304,7 +354,12 @@ def main(
 
     if use_keops:
         print("Constructing kernel matrix using PyKeOps...")
-        K = rbf_kernel_keops(points, points)
+
+        if kernel_function == KernelFunction.RBF:
+            K = rbf_kernel_keops(points, points)
+        else:
+            raise ValueError(f"Unsupported kernel function: {kernel_function.value}")
+
         K_adapted: MatrixInterface = LazyTensorKernelAdapter(
             K,
             dtype=points.dtype,
@@ -313,13 +368,21 @@ def main(
         )
     else:
         print("Constructing kernel matrix using NumPy...")
+
         start_time = perf_counter()
-        K = rbf_kernel(points, points) + kernel_matrix_regularization_factor * np.eye(
-            N, dtype=np.float64
-        )
+
+        if kernel_function == KernelFunction.RBF:
+            K = rbf_kernel(points, points)
+        elif kernel_function == KernelFunction.EXPONENTIAL:
+            K = exponential_kernel(points, points)
+        else:
+            raise ValueError(f"Unsupported kernel function: {kernel_function.value}")
+        K += kernel_matrix_regularization_factor * np.eye(N, dtype=np.float64)
         K_adapted = NumPyArrayAdapter(K)
+
         end_time = perf_counter()
         duration = end_time - start_time
+
         print(f"Kernel matrix constructed in {duration:.4g} seconds.")
 
     initial_residual_error = b - K_adapted @ np.ones(len(b))
@@ -413,7 +476,12 @@ def main(
     print(f"Time taken to estimate the best rank: {duration:.4g} seconds")
 
     print("Plotting the theoretical model parameters...")
-    plots_directory = Path("plots/adaptive_search") / dataset
+    plots_directory = (
+        Path("plots/adaptive_search")
+        / dataset
+        / f"kernel_{kernel_function.value}"
+        / f"pivoting_{pivoting_strategy.value}"
+    )
     plots_directory.mkdir(parents=True, exist_ok=True)
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
@@ -492,7 +560,9 @@ def main(
         num_points=N,
         dimension=D,
         seed=seed,
+        kernel_function=kernel_function,
         kernel_matrix_regularization_factor=kernel_matrix_regularization_factor,
+        pivoting_strategy=pivoting_strategy,
         preconditioner_regularization_factor=preconditioner_regularization_factor,
         tolerance=tolerance,
         max_iterations=max_iterations,
@@ -509,7 +579,12 @@ def main(
 
     print("Saving results to disk...")
 
-    results_directory = Path("results/adaptive_rank_selection") / dataset
+    results_directory = (
+        Path("results/adaptive_rank_selection")
+        / f"kernel_{kernel_function.value}"
+        / f"pivoting_{pivoting_strategy.value}"
+        / dataset
+    )
     results_directory.mkdir(parents=True, exist_ok=True)
 
     results_path = results_directory / f"N_{N}.json"

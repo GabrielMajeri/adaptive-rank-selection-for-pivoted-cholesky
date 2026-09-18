@@ -28,6 +28,7 @@ from adaptive_rank.preconditioner import (
     GreedilyPivotedCholeskyPreconditioner,
     PivotedCholeskyPreconditioner,
     PivotedCholeskyStrategy,
+    RandomlyPivotedCholeskyPreconditioner,
     UniformlyRandomPivotedCholeskyPreconditioner,
 )
 from adaptive_rank.solver import PreconditionedConjugateGradientSolver
@@ -75,7 +76,7 @@ def main(
             help="Regularization factor for the kernel matrix. Added to the diagonal of the kernel matrix to ensure positive definiteness and improve numerical stability."
         ),
     ] = 1e-5,
-    preconditioner: Annotated[
+    pivoting_strategy: Annotated[
         PivotedCholeskyStrategy,
         typer.Option(
             help=f"Preconditioner to use for the conjugate gradient solver. Options: {', '.join([p.value for p in PivotedCholeskyStrategy])}"
@@ -138,9 +139,9 @@ def main(
 
     results_directory = (
         Path("results/exhaustive_search")
-        / dataset
         / f"kernel_{kernel_function.value}"
-        / f"preconditioner_{preconditioner.value}"
+        / f"pivoting_{pivoting_strategy.value}"
+        / dataset
     )
 
     if plot_only:
@@ -222,18 +223,23 @@ def main(
         def construct_pivoted_cholesky_preconditioner(
             matrix: MatrixInterface, rank: int
         ) -> PivotedCholeskyPreconditioner:
-            if preconditioner == PivotedCholeskyStrategy.GREEDY:
+            if pivoting_strategy == PivotedCholeskyStrategy.GREEDY:
                 return GreedilyPivotedCholeskyPreconditioner(
                     matrix, rank, preconditioner_regularization_factor, rank
                 )
-            elif preconditioner == PivotedCholeskyStrategy.UNIFORM:
+            elif pivoting_strategy == PivotedCholeskyStrategy.UNIFORM_RANDOM:
                 generator = np.random.default_rng(seed)
                 return UniformlyRandomPivotedCholeskyPreconditioner(
                     generator, matrix, rank, preconditioner_regularization_factor
                 )
+            elif pivoting_strategy == PivotedCholeskyStrategy.RPCHOLESKY:
+                generator = np.random.default_rng(seed)
+                return RandomlyPivotedCholeskyPreconditioner(
+                    generator, matrix, rank, preconditioner_regularization_factor
+                )
             else:
                 raise NotImplementedError(
-                    f"Unsupported preconditioner strategy: '{preconditioner.value}'"
+                    f"Unsupported pivoting strategy: '{pivoting_strategy.value}'"
                 )
 
         if use_tqdm:
@@ -268,7 +274,7 @@ def main(
             seed=seed,
             kernel_function=kernel_function.value,
             kernel_matrix_regularization_factor=kernel_matrix_regularization_factor,
-            preconditioner=preconditioner.value,
+            pivoting_strategy=pivoting_strategy.value,
             preconditioner_regularization_factor=preconditioner_regularization_factor,
             tolerance=tolerance,
             max_iterations=max_iterations,
@@ -289,9 +295,9 @@ def main(
     print("Plotting results...")
     plots_directory = (
         Path("plots/exhaustive_search")
-        / dataset
         / f"kernel_{kernel_function.value}"
-        / f"preconditioner_{preconditioner.value}"
+        / f"pivoting_{pivoting_strategy.value}"
+        / dataset
     )
     plots_directory.mkdir(parents=True, exist_ok=True)
 

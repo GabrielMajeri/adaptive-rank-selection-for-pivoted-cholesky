@@ -12,7 +12,7 @@ class ExperimentResults(BaseModel):
     kernel_function: str
     kernel_matrix_regularization_factor: float
 
-    preconditioner: str
+    pivoting_strategy: str
     preconditioner_regularization_factor: float
 
     tolerance: float

@@ -132,7 +132,7 @@ class PivotedCholeskyStrategy(StrEnum):
     "Enumeration of pivot-selection strategies for the pivoted Cholesky decomposition."
 
     GREEDY = "greedy"
-    UNIFORM = "uniform"
+    UNIFORM_RANDOM = "uniform"
     RPCHOLESKY = "rpcholesky"
 
 
@@ -383,6 +383,51 @@ class UniformlyRandomPivotedCholeskyPreconditioner(PivotedCholeskyPreconditioner
 
         available_indices = list(self._available_indices)
         pivot = self._generator.choice(available_indices, size=1).item()
+        self._indices.append(pivot)
+        self._available_indices.remove(pivot)
+
+        # At this point, the pivot'th row of the matrix might be computed
+        row = self._matrix[pivot]
+        self._preconditioner_upper[self._current_inner_rank, :] = (
+            row
+            - self._preconditioner_upper[: self._current_inner_rank, [pivot]].mT
+            @ self._preconditioner_upper[: self._current_inner_rank, :]
+        ) / math.sqrt(cast(float, self._matrix_diagonal[pivot]))
+        self._matrix_diagonal -= (
+            self._preconditioner_upper[self._current_inner_rank, :] ** 2
+        )
+        self._matrix_diagonal = self._matrix_diagonal.clip(0, None)
+
+        self._current_inner_rank += 1
+
+
+class RandomlyPivotedCholeskyPreconditioner(PivotedCholeskyPreconditioner):
+    _generator: np.random.Generator
+
+    def __init__(
+        self,
+        generator: np.random.Generator,
+        matrix: MatrixInterface,
+        max_rank: int,
+        regularization_factor: float | None,
+    ) -> None:
+        super().__init__(matrix, max_rank, regularization_factor)
+
+        self._generator = generator
+
+        dimension = matrix.shape[0]
+        self._available_indices = set(range(dimension))
+
+    @override
+    def update_inner(self) -> None:
+        self._ensure_capacity()
+
+        available_indices = list(self._available_indices)
+        normalized_diagonal = self._matrix_diagonal / self._matrix_diagonal.sum()
+
+        pivot = self._generator.choice(
+            available_indices, size=1, p=normalized_diagonal[available_indices]
+        ).item()
         self._indices.append(pivot)
         self._available_indices.remove(pivot)
 
