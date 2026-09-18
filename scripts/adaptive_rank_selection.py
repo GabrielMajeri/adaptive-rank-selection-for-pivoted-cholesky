@@ -451,8 +451,11 @@ def main(
         )
         estimated_conditioning_numbers.append(estimated_cond)
 
-        num_iterations = conjugate_gradient_iterations_bound(
-            estimated_cond, initial_residual_error_norm, tolerance
+        num_iterations = round(
+            iteration_count_scaling_constant
+            * conjugate_gradient_iterations_bound(
+                estimated_cond, initial_residual_error_norm, tolerance
+            )
         )
         estimated_numbers_of_iterations.append(num_iterations)
 
@@ -477,7 +480,7 @@ def main(
 
     print("Plotting the theoretical model parameters...")
     plots_directory = (
-        Path("plots/adaptive_search")
+        Path("plots/adaptive_rank_selection")
         / dataset
         / f"kernel_{kernel_function.value}"
         / f"pivoting_{pivoting_strategy.value}"
