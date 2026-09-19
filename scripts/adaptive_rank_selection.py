@@ -484,9 +484,9 @@ def main(
     print("Plotting the theoretical model parameters...")
     plots_directory = (
         Path("plots/adaptive_rank_selection")
-        / dataset
         / f"kernel_{kernel_function.value}"
         / f"pivoting_{pivoting_strategy.value}"
+        / dataset
     )
     plots_directory.mkdir(parents=True, exist_ok=True)
 
