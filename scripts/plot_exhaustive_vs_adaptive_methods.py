@@ -96,6 +96,23 @@ def main(
             label="Not converged",
         )
 
+    # Mark the empirical minimum of the elapsed times from the exhaustive search results
+    empirical_minimum = int(np.argmin(elapsed_times))
+    print(
+        "Empirical minimum rank from exhaustive search:",
+        exhaustive_search_results.ranks[empirical_minimum],
+    )
+
+    ax.scatter(
+        exhaustive_search_results.ranks[empirical_minimum],
+        elapsed_times[empirical_minimum],
+        20**2,
+        color="green",
+        marker="s",
+        label="Empirical minimum",
+        zorder=3,
+    )
+
     # Determine at which y value to mark the best rank found by the adaptive method
     # We will use the average of the two closest elapsed times from the exhaustive search results
     best_rank_index = bisect(
@@ -110,6 +127,11 @@ def main(
             elapsed_times[best_rank_index - 1] + elapsed_times[best_rank_index]
         ) / 2
 
+    print(
+        "Best rank found by adaptive method:",
+        adaptive_rank_selection_results.best_rank,
+    )
+
     ax.scatter(
         adaptive_rank_selection_results.best_rank,
         best_elapsed_time,
@@ -120,11 +142,24 @@ def main(
         zorder=3,
     )
 
+    rank_difference = abs(
+        adaptive_rank_selection_results.best_rank
+        - exhaustive_search_results.ranks[empirical_minimum]
+    )
+    print(
+        "Rank offset between empirical minimum and adaptive method's best rank:",
+        rank_difference,
+    )
+
+    print(f"Relative error: {rank_difference / num_points * 100:.2f}%")
+
     ax.set_xlabel("Rank of pivoted Cholesky preconditioner", fontsize=15)
     ax.set_ylabel("Elapsed time (seconds)", fontsize=15)
 
     legend = ax.legend(loc="upper right", fontsize=15)
-    legend.legend_handles[-1]._sizes = [10**2]  # pyright: ignore[reportOptionalMemberAccess, reportAttributeAccessIssue]
+    # Make square and star markers smaller
+    legend.legend_handles[-2]._sizes = [15**2]  # pyright: ignore[reportOptionalMemberAccess, reportAttributeAccessIssue]
+    legend.legend_handles[-1]._sizes = [15**2]  # pyright: ignore[reportOptionalMemberAccess, reportAttributeAccessIssue]
 
     ax.tick_params(axis="both", which="major", labelsize=15)
     ax.grid()

@@ -132,6 +132,7 @@ def conjugate_gradient_iterations_bound(
     conditioning_number: float,
     initial_residual_error_norm: float,
     tolerance: float,
+    scaling_constant: float = 1.0,
 ) -> int:
     """Computes an upper bound on the number of iterations required for the conjugate gradient solver
     to converge to a solution with residual error norm below the specified tolerance,
@@ -139,7 +140,8 @@ def conjugate_gradient_iterations_bound(
     """
     return int(
         np.ceil(
-            0.5
+            scaling_constant
+            * 0.5
             * np.sqrt(conditioning_number)
             * np.log(initial_residual_error_norm / tolerance)
         )
@@ -451,12 +453,13 @@ def main(
         )
         estimated_conditioning_numbers.append(estimated_cond)
 
-        num_iterations = round(
-            iteration_count_scaling_constant
-            * conjugate_gradient_iterations_bound(
-                estimated_cond, initial_residual_error_norm, tolerance
-            )
+        num_iterations = conjugate_gradient_iterations_bound(
+            estimated_cond,
+            initial_residual_error_norm,
+            tolerance,
+            scaling_constant=iteration_count_scaling_constant,
         )
+
         estimated_numbers_of_iterations.append(num_iterations)
 
         estimated_time = time_complexity_estimator.estimate_time(

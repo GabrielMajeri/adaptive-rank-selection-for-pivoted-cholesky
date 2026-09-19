@@ -109,7 +109,7 @@ def main(
         typer.Option(
             help="Maximum number of iterations for the conjugate gradient solver. If exceeded, the solver will be considered to have not converged."
         ),
-    ] = 3000,
+    ] = 5000,
     use_keops: Annotated[
         bool, typer.Option(help="Use PyKeOps for kernel matrix computation")
     ] = False,
@@ -175,6 +175,8 @@ def main(
 
         N: int = points.shape[0]
         D: int = points.shape[1]
+
+        print(f"Working with N = {N} vectors of dimension D = {D}")
 
         max_rank = max_rank if max_rank is not None else N // 2
 

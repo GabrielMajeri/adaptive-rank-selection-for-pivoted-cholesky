@@ -97,7 +97,9 @@ def main(
     estimate_computation_step: Annotated[
         int,
         typer.Option(
-            help="Step size for computing conditioning number estimates. Estimates are computed every 'estimate_computation_step' iterations of the preconditioner update."
+            "--estimate-computation-step",
+            "--rank-step",
+            help="Step size for computing conditioning number estimates. Estimates are computed every 'estimate_computation_step' iterations of the preconditioner update.",
         ),
     ] = 50,
 ) -> None:

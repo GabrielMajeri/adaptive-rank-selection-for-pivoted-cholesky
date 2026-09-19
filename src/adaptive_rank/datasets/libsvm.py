@@ -43,6 +43,10 @@ def download_libsvm_dataset(
     else:
         raise ValueError("Unknown dataset kind")
 
+    if identifier == "YearPredictionMSD":
+        file_url = f"{file_url}.bz2"
+        target_path = target_path.with_suffix(".bz2")
+
     logger.debug("Beginning data file download...")
     download_file(
         file_url,
@@ -52,6 +56,17 @@ def download_libsvm_dataset(
         verify=False,
     )
     logger.debug("File downloaded successfully!")
+
+    if identifier == "YearPredictionMSD":
+        logger.debug("Decompressing the downloaded .bz2 file...")
+        import bz2
+
+        with (
+            open(target_path, "rb") as f_in,
+            open(target_path.with_suffix(""), "wb") as f_out,
+        ):
+            decompressed = bz2.decompress(f_in.read())
+            f_out.write(decompressed)
 
 
 def load_raw_libsvm_dataset(
