@@ -1,3 +1,4 @@
+import numpy as np
 from pydantic import BaseModel
 
 
@@ -43,8 +44,15 @@ class ExhaustiveSearchResults(ExperimentResults):
 class AdaptiveRankSelectionResults(ExperimentResults):
     "Data class to store the results of the adaptive rank selection experiment."
 
+    interpolation_exponent: float
+    iteration_count_scaling_constant: float
+
     ranks: list[int]
+
+    initial_residual_error_norm: float
+    estimated_conditioning_numbers: list[float]
     estimated_num_iterations: list[int]
+
     estimated_times: list[float]
     best_rank: int
     best_estimated_time: float
@@ -53,3 +61,23 @@ class AdaptiveRankSelectionResults(ExperimentResults):
     residual_error_norm: float
     converged: bool
     real_elapsed_time: float
+
+
+def conjugate_gradient_iterations_bound(
+    conditioning_number: float,
+    initial_residual_error_norm: float,
+    tolerance: float,
+    scaling_constant: float = 1.0,
+) -> int:
+    """Computes an upper bound on the number of iterations required for the conjugate gradient solver
+    to converge to a solution with residual error norm below the specified tolerance,
+    given an estimate of the conditioning number of the system matrix.
+    """
+    return int(
+        np.ceil(
+            scaling_constant
+            * 0.5
+            * np.sqrt(conditioning_number)
+            * np.log(initial_residual_error_norm / tolerance)
+        )
+    )

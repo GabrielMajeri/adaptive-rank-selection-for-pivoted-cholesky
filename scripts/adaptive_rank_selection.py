@@ -16,7 +16,10 @@ from adaptive_rank.condition_number import (
 )
 from adaptive_rank.datasets.utils import load_dataset
 from adaptive_rank.experiments import warm_up_code
-from adaptive_rank.experiments.common import AdaptiveRankSelectionResults
+from adaptive_rank.experiments.common import (
+    AdaptiveRankSelectionResults,
+    conjugate_gradient_iterations_bound,
+)
 from adaptive_rank.interface import (
     LazyTensorKernelAdapter,
     MatrixInterface,
@@ -125,26 +128,6 @@ def fit_interpolation_exponent_on_subset(
         trace_estimates,
         pivot_estimates,
         eigenvalue_estimates,
-    )
-
-
-def conjugate_gradient_iterations_bound(
-    conditioning_number: float,
-    initial_residual_error_norm: float,
-    tolerance: float,
-    scaling_constant: float = 1.0,
-) -> int:
-    """Computes an upper bound on the number of iterations required for the conjugate gradient solver
-    to converge to a solution with residual error norm below the specified tolerance,
-    given an estimate of the conditioning number of the system matrix.
-    """
-    return int(
-        np.ceil(
-            scaling_constant
-            * 0.5
-            * np.sqrt(conditioning_number)
-            * np.log(initial_residual_error_norm / tolerance)
-        )
     )
 
 
@@ -572,7 +555,11 @@ def main(
         preconditioner_regularization_factor=preconditioner_regularization_factor,
         tolerance=tolerance,
         max_iterations=max_iterations,
+        interpolation_exponent=interpolation_exponent,
+        iteration_count_scaling_constant=iteration_count_scaling_constant,
         ranks=ranks,
+        initial_residual_error_norm=initial_residual_error_norm,
+        estimated_conditioning_numbers=estimated_conditioning_numbers,
         estimated_num_iterations=estimated_numbers_of_iterations,
         estimated_times=estimated_times,
         best_rank=best_rank,

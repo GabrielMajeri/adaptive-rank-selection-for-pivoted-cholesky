@@ -37,9 +37,6 @@ def plot_exhaustive_search_results(
             label="Not converged",
         )
 
-    ax.set_xlabel("Rank of pivoted Cholesky preconditioner", fontsize=15)
-    ax.set_ylabel("Elapsed time\n(seconds)", fontsize=15)
-
     ax.tick_params(axis="both", which="major", labelsize=15)
 
     ax.legend(loc="upper right", fontsize=15)
@@ -62,6 +59,9 @@ def main(
 
     for index, results in enumerate(all_results):
         plot_exhaustive_search_results(results, index, axes[index])
+
+    fig.supxlabel("Rank of pivoted Cholesky preconditioner", fontsize=15)
+    fig.supylabel("Elapsed time (seconds)", fontsize=15)
 
     fig.tight_layout()
 
