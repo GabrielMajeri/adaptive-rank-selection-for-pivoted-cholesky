@@ -47,7 +47,7 @@ def fit_interpolation_exponent_on_subset(
     kernel_matrix_regularization_factor: float,
     pivoting_strategy: PivotedCholeskyStrategy,
     preconditioner_regularization_factor: float,
-    rank_step_size: int = 50,
+    rank_step_size: int,
 ) -> float:
     """Fits the exponent used for interpolating between trace-based and pivot-based estimates
     of the kernel matrix conditioning number, by comparing them to the eigenvalue-based estimates
@@ -139,8 +139,8 @@ def fit_iteration_count_scaling_constant(
     initial_residual_error_norm: float,
     tolerance: float,
     interpolation_exponent: float,
-    max_iterations: int = 5000,
-    rank_step_size: int = 50,
+    max_iterations: int,
+    rank_step_size: int,
 ) -> float:
     """Fits the scaling constant used for estimating the number of iterations
     of the preconditioned conjugate gradient solver, by comparing the estimated number of iterations
@@ -277,6 +277,12 @@ def main(
             help="Step size for the ranks used to fit the interpolation exponent."
         ),
     ] = 100,
+    iteration_count_scaling_constant_fitting_step_size: Annotated[
+        int,
+        typer.Option(
+            help="Step size for the ranks used to fit the iterations count scaling constant."
+        ),
+    ] = 100,
     tolerance: Annotated[
         float,
         typer.Option(
@@ -383,6 +389,7 @@ def main(
         tolerance,
         interpolation_exponent,
         max_iterations,
+        iteration_count_scaling_constant_fitting_step_size,
     )
     end_time = perf_counter()
     duration = end_time - start_time
