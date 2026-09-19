@@ -65,6 +65,10 @@ def fit_interpolation_exponent(
 
     # Non-linear least squares fitting to find the optimal exponent
     popt, _ = curve_fit(
-        interpolation_function, ranks, eigenvalue_estimates, p0=[initial_guess]
+        interpolation_function,
+        ranks,
+        eigenvalue_estimates,
+        p0=[initial_guess],
+        bounds=(0, np.inf),
     )
     return popt[0]
