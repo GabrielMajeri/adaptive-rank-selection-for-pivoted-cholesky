@@ -53,6 +53,14 @@ def main(
     for a given dataset and number of points. Makes plots of the elapsed time vs. rank for both methods,
     and marks the best rank found by the adaptive method.
     """
+    print(
+        f"Comparing exhaustive search and adaptive rank selection for dataset {dataset} with {num_points} points"
+    )
+    print(f"Kernel function: {kernel_function.value}")
+    print(f"Pivoting strategy: {pivoting_strategy.value}")
+    print(f"Max rank for exhaustive search: {max_rank}")
+    print(f"Rank step for exhaustive search: {rank_step}")
+
     max_rank = max_rank if max_rank is not None else num_points // 2
 
     exhaustive_search_results_path = Path(
