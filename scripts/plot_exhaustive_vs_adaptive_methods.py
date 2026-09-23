@@ -26,6 +26,9 @@ def main(
             help="Number of points of the dataset. Equal to the dimension of the kernel matrix.",
         ),
     ] = 1000,
+    seed: Annotated[
+        int | None, typer.Option(help="Seed for random number generator")
+    ] = 42,
     kernel_function: Annotated[
         KernelFunction,
         typer.Option(
@@ -53,6 +56,16 @@ def main(
     for a given dataset and number of points. Makes plots of the elapsed time vs. rank for both methods,
     and marks the best rank found by the adaptive method.
     """
+    if dataset == "random-multivariate-normal":
+        if seed is None:
+            raise ValueError(
+                "Seed must be specified for `random-multivariate-normal` dataset"
+            )
+
+        seed_component = f"_seed_{seed}"
+    else:
+        seed_component = ""
+
     print(
         f"Comparing exhaustive search and adaptive rank selection for dataset {dataset} with {num_points} points"
     )
@@ -64,7 +77,7 @@ def main(
     max_rank = max_rank if max_rank is not None else num_points // 2
 
     exhaustive_search_results_path = Path(
-        f"results/exhaustive_search/kernel_{kernel_function.value}/pivoting_{pivoting_strategy.value}/{dataset}/N_{num_points}_max_k_{max_rank}_step_{rank_step}.json"
+        f"results/exhaustive_search/kernel_{kernel_function.value}/pivoting_{pivoting_strategy.value}/{dataset}/N_{num_points}{seed_component}_max_k_{max_rank}_step_{rank_step}.json"
     )
     with open(exhaustive_search_results_path, "r") as file:
         exhaustive_search_results = ExhaustiveSearchResults.model_validate_json(
@@ -72,7 +85,7 @@ def main(
         )
 
     adaptive_rank_selection_results_path = Path(
-        f"results/adaptive_rank_selection/kernel_{kernel_function.value}/pivoting_{pivoting_strategy.value}/{dataset}/N_{num_points}.json"
+        f"results/adaptive_rank_selection/kernel_{kernel_function.value}/pivoting_{pivoting_strategy.value}/{dataset}/N_{num_points}{seed_component}.json"
     )
     with open(adaptive_rank_selection_results_path, "r") as file:
         adaptive_rank_selection_results = (
@@ -159,6 +172,11 @@ def main(
         rank_difference,
     )
 
+    print(
+        "Difference in solve time between empirical minimum and adaptive method's best rank:",
+        best_elapsed_time - elapsed_times[empirical_minimum],
+    )
+
     print(f"Relative error: {rank_difference / num_points * 100:.2f}%")
 
     ax.set_xlabel("Rank of pivoted Cholesky preconditioner", fontsize=15)
@@ -182,7 +200,9 @@ def main(
     )
     plots_directory.mkdir(parents=True, exist_ok=True)
 
-    fig.savefig(plots_directory / f"comparison_{dataset}_N_{num_points}.pdf")
+    fig.savefig(
+        plots_directory / f"comparison_{dataset}_N_{num_points}{seed_component}.pdf"
+    )
 
 
 if __name__ == "__main__":

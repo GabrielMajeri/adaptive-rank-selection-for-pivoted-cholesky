@@ -305,6 +305,16 @@ def main(
     """Uses our method for adaptively selecting the rank of the low-rank approximation,
     in order to minimize the total elapsed time of the algorithm.
     """
+    if dataset == "random-multivariate-normal":
+        if seed is None:
+            raise ValueError(
+                "Seed must be specified for `random-multivariate-normal` dataset"
+            )
+
+        seed_component = f"_seed_{seed}"
+    else:
+        seed_component = ""
+
     if all:
         num_points = None
 
@@ -518,7 +528,7 @@ def main(
     ax.grid()
 
     fig.tight_layout()
-    fig.savefig(plots_directory / f"N_{N}.pdf")
+    fig.savefig(plots_directory / f"N_{N}{seed_component}.pdf")
 
     print("Solving the system using PCG with the preconditioner of best found rank...")
 
@@ -582,7 +592,7 @@ def main(
     )
     results_directory.mkdir(parents=True, exist_ok=True)
 
-    results_path = results_directory / f"N_{N}.json"
+    results_path = results_directory / f"N_{N}{seed_component}.json"
 
     with open(results_path, "w") as file:
         file.write(results.model_dump_json(indent=2))

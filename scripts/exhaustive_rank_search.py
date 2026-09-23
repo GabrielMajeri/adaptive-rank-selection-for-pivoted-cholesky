@@ -144,6 +144,16 @@ def main(
         / dataset
     )
 
+    if dataset == "random-multivariate-normal":
+        if seed is None:
+            raise ValueError(
+                "Seed must be specified for `random-multivariate-normal` dataset"
+            )
+
+        seed_component = f"_seed_{seed}"
+    else:
+        seed_component = ""
+
     if plot_only:
         if not num_points:
             print(
@@ -156,7 +166,8 @@ def main(
         max_rank = max_rank if max_rank is not None else N // 2
 
         results_path = (
-            results_directory / f"N_{N}_max_k_{max_rank}_step_{rank_step}.json"
+            results_directory
+            / f"N_{N}{seed_component}_max_k_{max_rank}_step_{rank_step}.json"
         )
 
         if not results_path.exists():
@@ -181,7 +192,8 @@ def main(
         max_rank = max_rank if max_rank is not None else N // 2
 
         results_path = (
-            results_directory / f"N_{N}_max_k_{max_rank}_step_{rank_step}.json"
+            results_directory
+            / f"N_{N}{seed_component}_max_k_{max_rank}_step_{rank_step}.json"
         )
 
         if use_keops:
@@ -313,7 +325,9 @@ def main(
 
     plot_results(figure, results)
     figure.tight_layout()
-    figure.savefig(plots_directory / f"N_{N}_max_k_{max_rank}_step_{rank_step}.pdf")
+    figure.savefig(
+        plots_directory / f"N_{N}{seed_component}_max_k_{max_rank}_step_{rank_step}.pdf"
+    )
 
 
 def solve_system_using_pivoted_cholesky_preconditioner(

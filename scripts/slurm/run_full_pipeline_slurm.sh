@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=256
 #SBATCH --mem=1T
-#SBATCH --time=08:00:00
+#SBATCH --time=24:00:00
 #SBATCH --account=acc-d-fiz-26-001
 #SBATCH --partition=cpu-wide
 
@@ -29,10 +29,11 @@ DATASET=random-multivariate-normal
 # DATASET=sgdml-uracil
 
 # Experimental parameters
-NUM_POINTS=10000
+NUM_POINTS=20000
 PIVOTING_STRATEGY=greedy
-MAX_RANK=5000
+MAX_RANK=10000
 RANK_STEP=100
+SEED=42
 
 # Disable Python output buffering to see real-time output
 export PYTHONUNBUFFERED=1
@@ -41,6 +42,7 @@ export PYTHONUNBUFFERED=1
 uv run scripts/exhaustive_rank_search.py \
     --dataset $DATASET \
     --num-points $NUM_POINTS \
+    --seed $SEED \
     --pivoting-strategy $PIVOTING_STRATEGY \
     --max-rank $MAX_RANK \
     --rank-step $RANK_STEP
@@ -49,12 +51,14 @@ uv run scripts/exhaustive_rank_search.py \
 uv run scripts/adaptive_rank_selection.py \
     --dataset $DATASET \
     --num-points $NUM_POINTS \
+    --seed $SEED \
     --pivoting-strategy $PIVOTING_STRATEGY
 
 # Plot a comparison of the exhaustive and adaptive methods
 uv run scripts/plot_exhaustive_vs_adaptive_methods.py \
     --dataset $DATASET \
     --num-points $NUM_POINTS \
+    --seed $SEED \
     --pivoting-strategy $PIVOTING_STRATEGY \
     --max-rank $MAX_RANK \
     --rank-step $RANK_STEP
