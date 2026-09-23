@@ -47,7 +47,7 @@ def launch_slurm_job(
     #SBATCH --ntasks=1
     #SBATCH --cpus-per-task=256
     #SBATCH --mem=1T
-    #SBATCH --time=08:00:00
+    #SBATCH --time=24:00:00
     #SBATCH --account=acc-d-fiz-26-001
     #SBATCH --partition=cpu-wide
 
@@ -97,7 +97,7 @@ def main(
         typer.Option(
             help="Number of points to use for the datasets, separated by commas."
         ),
-    ] = "5000",
+    ] = "20000",
     kernel_functions: Annotated[
         str,
         typer.Option(
@@ -115,7 +115,7 @@ def main(
         typer.Option(
             help="Maximum ranks to use for the pivoted Cholesky decomposition, separated by commas. Number of options must match the number of points list."
         ),
-    ] = "2500",
+    ] = "10000",
     rank_steps: Annotated[
         str,
         typer.Option(
@@ -136,6 +136,17 @@ def main(
             rank_steps.split(","),
             strict=True,
         ):
+            if dataset == "libsvm-cpusmall" and int(num_point) > 8192:
+                print(
+                    "`libsvm-cpusmall` dataset has a maximum of 8192 points. Adjusting num_points to 8192."
+                )
+                num_point = "8192"
+                if int(max_rank) > 8192:
+                    print(
+                        "`libsvm-cpusmall` dataset has a maximum of 8192 points. Adjusting max_rank to 4096."
+                    )
+                    max_rank = "4096"
+
             for kernel_function in kernel_functions.split(","):
                 for pivoting_strategy in pivoting_strategies.split(","):
                     if dry_run:

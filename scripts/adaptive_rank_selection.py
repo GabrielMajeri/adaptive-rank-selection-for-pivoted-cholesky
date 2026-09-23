@@ -270,19 +270,19 @@ def main(
         typer.Option(
             help="Size of the subset of the dataset used to fit the interpolation exponent."
         ),
-    ] = 1000,
+    ] = 100,
     interpolation_exponent_fitting_step_size: Annotated[
         int,
         typer.Option(
             help="Step size for the ranks used to fit the interpolation exponent."
         ),
-    ] = 100,
+    ] = 5,
     iteration_count_scaling_constant_fitting_step_size: Annotated[
         int,
         typer.Option(
             help="Step size for the ranks used to fit the iterations count scaling constant."
         ),
-    ] = 100,
+    ] = 5,
     tolerance: Annotated[
         float,
         typer.Option(
@@ -460,7 +460,7 @@ def main(
         if estimated_time < best_estimated_time:
             best_estimated_time = estimated_time
             best_rank = rank
-        elif estimated_time > best_estimated_time:
+        elif estimated_time >= 1.01 * best_estimated_time:
             print(f"Minimum found after evaluating rank {rank}")
             break
 
@@ -525,12 +525,7 @@ def main(
     # Solve the problem using PCG with the preconditioner of best found rank, and measure the real elapsed time
     start_time = perf_counter()
 
-    preconditioner = GreedilyPivotedCholeskyPreconditioner(
-        K_adapted,
-        max_rank=best_rank,
-        regularization_factor=preconditioner_regularization_factor,
-    )
-    preconditioner.compute_full()
+    preconditioner.update_outer()
 
     solver = PreconditionedConjugateGradientSolver(
         K_adapted, b, preconditioner, tolerance
