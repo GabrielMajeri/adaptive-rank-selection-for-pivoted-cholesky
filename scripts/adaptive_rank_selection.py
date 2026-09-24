@@ -48,6 +48,7 @@ def fit_interpolation_exponent_on_subset(
     pivoting_strategy: PivotedCholeskyStrategy,
     preconditioner_regularization_factor: float,
     rank_step_size: int,
+    seed: int,
 ) -> float:
     """Fits the exponent used for interpolating between trace-based and pivot-based estimates
     of the kernel matrix conditioning number, by comparing them to the eigenvalue-based estimates
@@ -73,7 +74,7 @@ def fit_interpolation_exponent_on_subset(
             regularization_factor=preconditioner_regularization_factor,
         )
     elif pivoting_strategy == PivotedCholeskyStrategy.UNIFORM_RANDOM:
-        generator = np.random.default_rng()
+        generator = np.random.default_rng(seed)
         preconditioner = UniformlyRandomPivotedCholeskyPreconditioner(
             generator,
             K_adapted,
@@ -81,7 +82,7 @@ def fit_interpolation_exponent_on_subset(
             regularization_factor=preconditioner_regularization_factor,
         )
     elif pivoting_strategy == PivotedCholeskyStrategy.RPCHOLESKY:
-        generator = np.random.default_rng()
+        generator = np.random.default_rng(seed)
         preconditioner = RandomlyPivotedCholeskyPreconditioner(
             generator,
             K_adapted,
@@ -333,7 +334,10 @@ def main(
     start_time = perf_counter()
 
     subset_size = min(interpolation_exponent_fitting_subset_size, N)
-    subset_indices = np.random.choice(N, size=subset_size, replace=False)
+    generator = np.random.default_rng(seed if seed else 0)
+    subset_indices = generator.choice(N, size=subset_size, replace=False)
+
+    print(f"Selected subset of {subset_size} points for interpolation exponent fitting")
 
     subset_vectors = points[subset_indices]
     subset_targets = b[subset_indices]
@@ -345,6 +349,7 @@ def main(
         pivoting_strategy,
         preconditioner_regularization_factor,
         interpolation_exponent_fitting_step_size,
+        seed if seed else 0,
     )
 
     end_time = perf_counter()
@@ -388,6 +393,10 @@ def main(
 
     initial_residual_error = b - K_adapted @ np.ones(len(b))
     initial_residual_error_norm = np.linalg.norm(initial_residual_error)
+
+    print(f"Initial residual error norm: {initial_residual_error_norm:.4g}")
+
+    print("Fitting the iteration count scaling constant on a subset of the dataset...")
 
     start_time = perf_counter()
     iteration_count_scaling_constant = fit_iteration_count_scaling_constant(
